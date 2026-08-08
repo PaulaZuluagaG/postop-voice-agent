@@ -5,7 +5,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class SeverityLevel(StrEnum):
@@ -31,6 +31,47 @@ class ProcedureScenario(StrEnum):
     BREAST_CANCER = "breast_cancer"
     TOTAL_JOINT_REPLACEMENT = "total_joint_replacement"
     GENERAL = "general"
+
+
+class ResponseCategory(StrEnum):
+    RESPUESTA_VALIDA = "RESPUESTA_VALIDA"
+    NO_LO_SE = "NO_LO_SE"
+    ALERTA_IMPLICITA = "ALERTA_IMPLICITA"
+    FUERA_DE_TONO = "FUERA_DE_TONO"
+    NO_ENTIENDE = "NO_ENTIENDE"
+
+
+class ClinicalAxis(StrEnum):
+    DOLOR = "dolor"
+    HERIDA = "herida"
+    DIGESTIVO = "digestivo"
+    RESPIRACION = "respiracion"
+    MOVILIDAD = "movilidad"
+    NINGUNO = "ninguno"
+
+
+class YesNo(StrEnum):
+    SI = "si"
+    NO = "no"
+
+
+def coerce_yes_no(value: object) -> YesNo | None:
+    """Normalize LLM or patient yes/no values into the YesNo enum."""
+    if value is None:
+        return None
+    if isinstance(value, YesNo):
+        return value
+    if isinstance(value, bool):
+        return YesNo.SI if value else YesNo.NO
+    if isinstance(value, int) and value in (0, 1):
+        return YesNo.SI if value else YesNo.NO
+    if isinstance(value, str):
+        normalized = value.strip().lower().replace("í", "i")
+        if normalized in {"si", "yes", "true", "1"}:
+            return YesNo.SI
+        if normalized in {"no", "false", "0"}:
+            return YesNo.NO
+    return None
 
 
 class ParsedPage(BaseModel):
@@ -80,12 +121,56 @@ class PatientFacts(BaseModel):
     confusion: bool | None = None
 
 
+class ClinicalFacts(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    dolor_0_10: float | None = Field(default=None, alias="DOLOR_0_10", ge=0, le=10)
+    fiebre_c: float | None = Field(default=None, alias="FIEBRE_C")
+    disnea: YesNo | None = Field(default=None, alias="DISNEA")
+    sangreado: YesNo | None = Field(default=None, alias="SANGREADO")
+    vomitos: int | None = Field(default=None, alias="VOMITOS", ge=0)
+    confusion: YesNo | None = Field(default=None, alias="CONFUSION")
+    procedimiento: str | None = Field(default=None, alias="PROCEDIMIENTO")
+    fecha_cirugia: str | None = Field(default=None, alias="FECHA_CIRUGIA")
+
+    @field_validator("disnea", "sangreado", "confusion", mode="before")
+    @classmethod
+    def _coerce_yes_no_fields(cls, value: object) -> object:
+        coerced = coerce_yes_no(value)
+        return coerced if coerced is not None else value
+
+    def to_patient_facts(self) -> PatientFacts:
+        return PatientFacts(
+            pain=self.dolor_0_10,
+            fever_celsius=self.fiebre_c,
+            dyspnea=_yes_no_to_bool(self.disnea),
+            bleeding=_yes_no_to_bool(self.sangreado),
+            vomiting_count=self.vomitos,
+            confusion=_yes_no_to_bool(self.confusion),
+        )
+
+
+def _yes_no_to_bool(value: YesNo | None) -> bool | None:
+    if value is None:
+        return None
+    return value == YesNo.SI
+
+
 class LLMTurnOutput(BaseModel):
-    patient_message: str
-    extracted_symptoms: PatientFacts = Field(default_factory=PatientFacts)
-    implicit_alert: bool = False
-    cited_source_ids: list[str] = Field(default_factory=list)
-    no_evidence_topics: list[str] = Field(default_factory=list)
+    categoria: ResponseCategory
+    foco: ClinicalAxis = ClinicalAxis.NINGUNO
+    evidencia_suficiente: bool = False
+    hechos: ClinicalFacts = Field(default_factory=ClinicalFacts)
+    texto_paciente: str
+    pregunta: str | None = None
+    fuentes: list[str] = Field(default_factory=list)
+
+    @property
+    def implicit_alert(self) -> bool:
+        return self.categoria == ResponseCategory.ALERTA_IMPLICITA
+
+    def to_patient_facts(self) -> PatientFacts:
+        return self.hechos.to_patient_facts()
 
 
 class TurnTimings(BaseModel):
@@ -101,6 +186,7 @@ class TurnRecord(BaseModel):
     agent_response: str
     rag_query: str
     retrieved_chunks: list[RetrievedChunk] = Field(default_factory=list)
+    llm_output: LLMTurnOutput | None = None
     symptoms: PatientFacts = Field(default_factory=PatientFacts)
     turn_score: int = 0
     cumulative_score: int = 0
@@ -114,6 +200,12 @@ class CallSessionState(BaseModel):
     call_id: UUID
     procedure_scenario: ProcedureScenario
     postop_day: int
+    patient_name: str = "Paciente"
+    patient_id: str | None = None
+    opening_message: str | None = None
+    procedure_name: str | None = None
+    surgery_date: str | None = None
+    covered_axes: set[ClinicalAxis] = Field(default_factory=set)
     cumulative_score: int = 0
     current_severity: SeverityLevel = SeverityLevel.GREEN
     alert_triggered: bool = False

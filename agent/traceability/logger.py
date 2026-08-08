@@ -36,15 +36,24 @@ class CallTraceLogger:
         *,
         procedure_scenario: str,
         postop_day: int,
+        patient_name: str | None = None,
+        patient_id: str | None = None,
+        procedure_name: str | None = None,
+        surgery_date: str | None = None,
     ) -> None:
-        self.log_event(
-            call_id,
-            "call_start",
-            {
-                "procedure_scenario": procedure_scenario,
-                "postop_day": postop_day,
-            },
-        )
+        payload: dict[str, str | int] = {
+            "procedure_scenario": procedure_scenario,
+            "postop_day": postop_day,
+        }
+        if patient_name:
+            payload["patient_name"] = patient_name
+        if patient_id:
+            payload["patient_id"] = patient_id
+        if procedure_name:
+            payload["procedure_name"] = procedure_name
+        if surgery_date:
+            payload["surgery_date"] = surgery_date
+        self.log_event(call_id, "call_start", payload)
 
     def log_turn(self, call_id: UUID, turn: TurnRecord) -> None:
         self.log_event(call_id, "turn", turn.model_dump(mode="json"))

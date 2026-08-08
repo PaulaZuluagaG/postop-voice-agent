@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from core.config import Settings, get_settings
-from core.models import PatientFacts, SeverityLevel
+from core.models import PatientFacts, ResponseCategory, SeverityLevel
 
 
 def score_turn(symptoms: PatientFacts) -> tuple[int, list[str]]:
@@ -41,6 +41,28 @@ def score_turn(symptoms: PatientFacts) -> tuple[int, list[str]]:
         rules.append(f"Vómitos {symptoms.vomiting_count} ≥ 3 (+10)")
 
     return score, rules
+
+
+def apply_cumulative_score(
+    current_total: int,
+    turn_score: int,
+    *,
+    categoria: ResponseCategory,
+    settings: Settings | None = None,
+) -> tuple[int, list[str]]:
+    """Add turn score and force red threshold on implicit alert."""
+    settings = settings or get_settings()
+    rules: list[str] = []
+    cumulative = current_total + turn_score
+
+    if (
+        categoria == ResponseCategory.ALERTA_IMPLICITA
+        and cumulative < settings.alert_score_threshold
+    ):
+        cumulative = settings.alert_score_threshold
+        rules.append(f"Alerta implícita: puntaje forzado a {settings.alert_score_threshold}")
+
+    return cumulative, rules
 
 
 def resolve_severity(cumulative_score: int, settings: Settings | None = None) -> SeverityLevel:

@@ -3,7 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,11 +36,11 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 5
     retrieval_score_threshold: float = 0.35
 
-    # LLM
-    google_api_key: str = Field(default="", alias="GOOGLE_API_KEY")
-    gemini_model: str = "gemini-1.5-flash"
-    gemini_temperature: float = 0.2
-    gemini_max_output_tokens: int = 512
+    # LLM (Ollama)
+    ollama_host: str = "http://127.0.0.1:11434"
+    ollama_model: str = "phi3.5"
+    ollama_temperature: float = 0.1
+    ollama_max_output_tokens: int = 512
 
     # Agent
     max_turns_per_call: int = 10

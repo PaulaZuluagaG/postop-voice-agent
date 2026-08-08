@@ -1,2 +1,0 @@
-{"event_type":"call_start","timestamp":"2026-08-07T23:07:40.969445","call_id":"7974eeba-1c16-49e3-84d3-2f3fc5751974","payload":{"procedure_scenario":"appendicitis","postop_day":1}}
-{"event_type":"call_close","timestamp":"2026-08-07T23:10:48.905624","call_id":"7974eeba-1c16-49e3-84d3-2f3fc5751974","payload":{"call_id":"7974eeba-1c16-49e3-84d3-2f3fc5751974","procedure_scenario":"appendicitis","postop_day":1,"final_score":0,"severity":"verde","alert_triggered":false,"sources_used":[],"turn_count":0,"closed_reason":"manual_close","turn_history":[]}}

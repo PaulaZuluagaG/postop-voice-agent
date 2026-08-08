@@ -1,13 +1,17 @@
+from datetime import date
 from uuid import uuid4
 
 from agent.orchestrator import ConversationOrchestrator
 from core.models import (
+    ClinicalAxis,
+    ClinicalFacts,
     DocumentType,
     LLMTurnOutput,
-    PatientFacts,
     ProcedureScenario,
+    ResponseCategory,
     RetrievedChunk,
     SeverityLevel,
+    YesNo,
 )
 from knowledge.retrieval.retriever import ContextualRetriever
 
@@ -32,20 +36,40 @@ class FakeRetriever(ContextualRetriever):
 
 
 class FakeLLM:
+    def generate_opening(self, **kwargs):
+        if kwargs.get("has_procedure_evidence"):
+            return LLMTurnOutput(
+                categoria=ResponseCategory.RESPUESTA_VALIDA,
+                texto_paciente="",
+                pregunta="¿Ha notado enrojecimiento alrededor de la herida de la apendicectomía?",
+            )
+        return LLMTurnOutput(
+            categoria=ResponseCategory.RESPUESTA_VALIDA,
+            texto_paciente="",
+            pregunta="Del 0 al 10, ¿qué tan fuerte es su dolor?",
+        )
+
     def generate_turn(self, **kwargs):
         return LLMTurnOutput(
-            patient_message="Entiendo su molestia. ¿El dolor empeora al respirar?",
-            extracted_symptoms=PatientFacts(pain=6.0),
-            cited_source_ids=["src_test"],
+            categoria=ResponseCategory.RESPUESTA_VALIDA,
+            foco=ClinicalAxis.DOLOR,
+            evidencia_suficiente=True,
+            hechos=ClinicalFacts(dolor_0_10=6.0),
+            texto_paciente="Entiendo su molestia.",
+            pregunta="¿El dolor empeora al respirar?",
+            fuentes=["src_test"],
         )
 
 
 class AlertLLM:
     def generate_turn(self, **kwargs):
         return LLMTurnOutput(
-            patient_message="Lo siento, esto no debería decir el LLM.",
-            extracted_symptoms=PatientFacts(pain=2.0),
-            implicit_alert=True,
+            categoria=ResponseCategory.ALERTA_IMPLICITA,
+            foco=ClinicalAxis.HERIDA,
+            evidencia_suficiente=True,
+            hechos=ClinicalFacts(sangreado=YesNo.SI),
+            texto_paciente="Lo siento, esto no debería decir el LLM.",
+            pregunta=None,
         )
 
 
@@ -73,8 +97,10 @@ def test_orchestrator_no_evidence_disclaimer() -> None:
     class NoEvidenceLLM:
         def generate_turn(self, **kwargs):
             return LLMTurnOutput(
-                patient_message="Debe tomar antibióticos específicos.",
-                no_evidence_topics=["antibióticos"],
+                categoria=ResponseCategory.RESPUESTA_VALIDA,
+                evidencia_suficiente=False,
+                texto_paciente="Debe tomar antibióticos específicos.",
+                pregunta="¿Qué síntoma le preocupa más?",
             )
 
     orchestrator = ConversationOrchestrator(
@@ -100,8 +126,11 @@ def test_orchestrator_accumulates_score_across_turns() -> None:
             self._calls += 1
             pain = 6.0 if self._calls == 1 else 8.0
             return LLMTurnOutput(
-                patient_message="Gracias por la información.",
-                extracted_symptoms=PatientFacts(pain=pain),
+                categoria=ResponseCategory.RESPUESTA_VALIDA,
+                foco=ClinicalAxis.DOLOR,
+                hechos=ClinicalFacts(dolor_0_10=pain),
+                texto_paciente="Gracias por la información.",
+                pregunta="¿Ha tenido fiebre?",
             )
 
     orchestrator = ConversationOrchestrator(
@@ -119,3 +148,74 @@ def test_orchestrator_accumulates_score_across_turns() -> None:
     assert second.turn_score == 10
     assert second.cumulative_score == 14
     assert second.severity == SeverityLevel.YELLOW
+
+
+def test_start_call_with_registration_leaves_opening_for_begin_triage() -> None:
+    session = ConversationOrchestrator(reference_date=date(2026, 8, 8)).start_call(
+        patient_name="María",
+        patient_id="P-001",
+        procedure_scenario=ProcedureScenario.APPENDICITIS,
+        procedure_name="Apendicitis",
+        surgery_date="ayer",
+    )
+    assert session.postop_day == 2
+    assert session.opening_message is None
+
+
+def test_begin_triage_without_procedure_evidence() -> None:
+    class GeneralOnlyRetriever(FakeRetriever):
+        def retrieve(self, *args, **kwargs):
+            chunk = RetrievedChunk(
+                chunk_id="chunk-general",
+                source_id="src_general",
+                text="Guía general postoperatoria.",
+                token_count=10,
+                chunk_index=0,
+                page_start=1,
+                page_end=1,
+                procedure_scenario=ProcedureScenario.GENERAL,
+                document_type=DocumentType.GUIDE,
+                language="es",
+                file_name="general.pdf",
+                is_general=True,
+                score=0.8,
+            )
+            return "query", [chunk], 1.0
+
+    orchestrator = ConversationOrchestrator(
+        retriever=GeneralOnlyRetriever(),
+        llm=FakeLLM(),
+        reference_date=date(2026, 8, 8),
+    )
+    session = orchestrator.start_call(
+        patient_name="María",
+        procedure_scenario=ProcedureScenario.APPENDICITIS,
+        procedure_name="Apendicitis",
+        surgery_date="ayer",
+        call_id=uuid4(),
+    )
+    opening = orchestrator.begin_triage(session.call_id)
+    assert "María" in opening
+    assert "No tengo información específica sobre Apendicitis" in opening
+    assert "triaje general" in opening.lower()
+    assert opening.count("?") == 1
+    assert "Del 0 al 10" in opening
+
+
+def test_begin_triage_with_procedure_evidence() -> None:
+    orchestrator = ConversationOrchestrator(
+        retriever=FakeRetriever(),
+        llm=FakeLLM(),
+        reference_date=date(2026, 8, 8),
+    )
+    session = orchestrator.start_call(
+        patient_name="María",
+        procedure_scenario=ProcedureScenario.APPENDICITIS,
+        procedure_name="Apendicitis",
+        surgery_date="ayer",
+        call_id=uuid4(),
+    )
+    opening = orchestrator.begin_triage(session.call_id)
+    assert "Sí cuento con guías clínicas sobre Apendicitis" in opening
+    assert "apendicectomía" in opening.lower()
+    assert opening.count("?") == 1
