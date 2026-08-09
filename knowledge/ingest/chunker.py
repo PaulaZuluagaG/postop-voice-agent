@@ -78,7 +78,6 @@ class TokenChunker:
                     document_type=document.document_type,
                     language=document.language,
                     file_name=document.file_name,
-                    is_general=document.is_general,
                 )
             )
             chunk_index += 1

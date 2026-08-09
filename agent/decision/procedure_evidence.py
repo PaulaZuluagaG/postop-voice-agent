@@ -9,7 +9,7 @@ def has_procedure_specific_evidence(
     chunks: list[RetrievedChunk],
     scenario: ProcedureScenario,
 ) -> bool:
-    """True when at least one non-general chunk matches the registered scenario."""
-    if scenario == ProcedureScenario.GENERAL:
-        return False
-    return any(not chunk.is_general and chunk.procedure_scenario == scenario for chunk in chunks)
+    """True when at least one chunk matches the registered scenario."""
+    if scenario == ProcedureScenario.OTHER:
+        return bool(chunks)
+    return any(chunk.procedure_scenario == scenario for chunk in chunks)

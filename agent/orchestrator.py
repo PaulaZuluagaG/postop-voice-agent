@@ -10,7 +10,7 @@ from agent.decision.clinical_axes import pending_axes, update_covered_axes
 from agent.decision.disclaimer_policy import should_replace_with_disclaimer
 from agent.decision.intake import (
     compute_postop_day,
-    map_procedure_to_scenario,
+    detect_procedure_mismatch,
     resolve_surgery_date,
 )
 from agent.decision.procedure_evidence import has_procedure_specific_evidence
@@ -21,13 +21,14 @@ from agent.decision.scoring import (
     should_force_alert,
 )
 from agent.decision.turn_enrichment import enrich_llm_output, take_first_question
-from agent.llm.ollama_client import OllamaClient
+from agent.llm.groq_client import GroqClient
 from agent.messages import (
     ALERT_MESSAGE,
     DEFAULT_OPENING_QUESTION,
     MAX_TURNS_CLOSE_MESSAGE,
     build_no_evidence_message,
     build_opening_intro,
+    build_procedure_mismatch_message,
 )
 from agent.traceability.logger import CallTraceLogger
 from core.config import Settings, get_settings
@@ -42,6 +43,7 @@ from core.models import (
     TurnRecord,
     TurnTimings,
 )
+from core.scenarios import scenario_label
 from knowledge.retrieval.retriever import ContextualRetriever
 
 
@@ -53,13 +55,13 @@ class ConversationOrchestrator:
         settings: Settings | None = None,
         *,
         retriever: ContextualRetriever | None = None,
-        llm: OllamaClient | None = None,
+        llm: GroqClient | None = None,
         trace_logger: CallTraceLogger | None = None,
         reference_date: date | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self._retriever = retriever or ContextualRetriever(self._settings)
-        self._llm = llm or OllamaClient(self._settings)
+        self._llm = llm or GroqClient(self._settings)
         self._trace = trace_logger or CallTraceLogger(self._settings)
         self._reference_date = reference_date
         self._sessions: dict[UUID, CallSessionState] = {}
@@ -67,30 +69,19 @@ class ConversationOrchestrator:
     def start_call(
         self,
         *,
-        procedure_scenario: ProcedureScenario = ProcedureScenario.GENERAL,
-        postop_day: int = 1,
+        procedure_scenario: ProcedureScenario,
         call_id: UUID | None = None,
         patient_name: str = "Paciente",
         patient_id: str | None = None,
-        procedure_name: str | None = None,
         surgery_date: str | None = None,
     ) -> CallSessionState:
         ref = self._reference_date or date.today()
+        postop_day = 1
         resolved_surgery_date: str | None = None
         if surgery_date:
             resolved = resolve_surgery_date(surgery_date, reference_date=ref)
             resolved_surgery_date = resolved.isoformat()
             postop_day = compute_postop_day(resolved, reference_date=ref)
-
-        if procedure_name:
-            mapped = map_procedure_to_scenario(procedure_name)
-            if (
-                mapped != ProcedureScenario.GENERAL
-                or procedure_scenario == ProcedureScenario.GENERAL
-            ):
-                procedure_scenario = mapped
-
-        opening_message = None
 
         session = CallSessionState(
             call_id=call_id or uuid4(),
@@ -98,9 +89,8 @@ class ConversationOrchestrator:
             postop_day=postop_day,
             patient_name=patient_name,
             patient_id=patient_id,
-            procedure_name=procedure_name,
             surgery_date=resolved_surgery_date,
-            opening_message=opening_message,
+            opening_message=None,
         )
         self._sessions[session.call_id] = session
         self._trace.log_call_start(
@@ -109,7 +99,7 @@ class ConversationOrchestrator:
             postop_day=postop_day,
             patient_name=patient_name,
             patient_id=patient_id,
-            procedure_name=procedure_name,
+            procedure_name=scenario_label(procedure_scenario),
             surgery_date=resolved_surgery_date,
         )
         return session
@@ -120,7 +110,7 @@ class ConversationOrchestrator:
         if session.opening_message:
             return session.opening_message
 
-        procedimiento = session.procedure_name or session.procedure_scenario.value.replace("_", " ")
+        procedimiento = scenario_label(session.procedure_scenario)
         ejes_pendientes = pending_axes(session.covered_axes)
         bootstrap_message = (
             f"cuidados postoperatorios complicaciones seguimiento "
@@ -181,7 +171,8 @@ class ConversationOrchestrator:
         turn_start = time.perf_counter()
         conversation_context = self._build_conversation_context(session)
         ejes_pendientes = pending_axes(session.covered_axes)
-        procedimiento = session.procedure_name or session.procedure_scenario.value.replace("_", " ")
+        procedimiento = scenario_label(session.procedure_scenario)
+        mismatch = detect_procedure_mismatch(patient_message, session.procedure_scenario)
 
         rag_query, retrieved, retrieval_ms = self._retriever.retrieve(
             patient_message,
@@ -215,7 +206,12 @@ class ConversationOrchestrator:
         )
         session.covered_axes = update_covered_axes(session.covered_axes, llm_output)
 
-        agent_response = self._compose_response(patient_message, llm_output)
+        agent_response = self._compose_response(
+            patient_message,
+            llm_output,
+            mismatch=mismatch,
+            registered_scenario=session.procedure_scenario,
+        )
 
         decision_start = time.perf_counter()
         symptoms = llm_output.to_patient_facts()
@@ -328,6 +324,9 @@ class ConversationOrchestrator:
     def _compose_response(
         patient_message: str,
         llm_output: LLMTurnOutput,
+        *,
+        mismatch: ProcedureScenario | None = None,
+        registered_scenario: ProcedureScenario,
     ) -> str:
         if llm_output.categoria == ResponseCategory.ALERTA_IMPLICITA:
             parts = [llm_output.texto_paciente.strip()]
@@ -342,6 +341,10 @@ class ConversationOrchestrator:
         else:
             base = llm_output.texto_paciente.strip()
 
+        if mismatch is not None:
+            notice = build_procedure_mismatch_message(mismatch, registered_scenario)
+            base = f"{notice} {base}".strip()
+
         if pregunta:
             return f"{base} {pregunta}".strip()
         return base
@@ -352,7 +355,7 @@ class ConversationOrchestrator:
         llm_output: LLMTurnOutput,
         has_evidence: bool,
     ) -> str:
-        procedimiento = session.procedure_name or session.procedure_scenario.value.replace("_", " ")
+        procedimiento = scenario_label(session.procedure_scenario)
         intro = build_opening_intro(
             patient_name=session.patient_name,
             has_evidence=has_evidence,

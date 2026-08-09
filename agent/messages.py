@@ -1,5 +1,7 @@
 """Fixed escalation and disclaimer messages."""
 
+from core.models import ProcedureScenario
+
 ALERT_MESSAGE = (
     "Por sus síntomas, es importante que contacte de inmediato a su equipo de salud "
     "para una evaluación presencial. No es una emergencia que requiera llamar al 911, "
@@ -37,6 +39,20 @@ def build_opening_intro(
 
 
 DEFAULT_OPENING_QUESTION = "Del 0 al 10, ¿qué tan fuerte es su dolor en este momento?"
+
+
+def build_procedure_mismatch_message(
+    mentioned_scenario: ProcedureScenario,
+    registered_scenario: ProcedureScenario,
+) -> str:
+    from core.scenarios import scenario_label
+
+    mentioned = scenario_label(mentioned_scenario)
+    registered = scenario_label(registered_scenario)
+    return (
+        f"Entiendo su consulta sobre {mentioned}, pero no tengo documentación sobre ese "
+        f"procedimiento en mis guías. Continuaré con el seguimiento de {registered}."
+    )
 
 
 def build_no_evidence_message(

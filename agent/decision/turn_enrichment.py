@@ -38,11 +38,30 @@ _BLEEDING_HINTS: tuple[str, ...] = (
     "sangre",
     "hemorrag",
 )
+_VOMITING_HINTS: tuple[str, ...] = (
+    "vomit",
+    "vómit",
+    "vomito",
+    "nausea",
+    "náusea",
+    "nauseas",
+    "náuseas",
+)
 _CONFUSION_HINTS: tuple[str, ...] = (
     "confus",
     "desorient",
     "alerta mental",
 )
+_EPISODE_HINTS: tuple[str, ...] = (
+    "episod",
+    "cuant",
+    "cuánt",
+    "veces",
+    "cuantos",
+    "cuántos",
+)
+
+_NUMERIC_EPISODES = re.compile(r"^\s*(\d+)\s*$")
 
 
 def _last_agent_message(session: CallSessionState) -> str:
@@ -76,15 +95,29 @@ def parse_yes_no_response(patient_message: str) -> YesNo | None:
     return YesNo.NO
 
 
+def parse_episode_count_response(patient_message: str) -> int | None:
+    match = _NUMERIC_EPISODES.match(patient_message.strip())
+    if not match:
+        return None
+    return int(match.group(1))
+
+
 def _detect_yes_no_axis(agent_message: str) -> tuple[str, ClinicalAxis] | None:
     normalized = normalize_procedure_text(agent_message)
     if any(hint in normalized for hint in _DYSPNEA_HINTS):
         return ("disnea", ClinicalAxis.RESPIRACION)
     if any(hint in normalized for hint in _BLEEDING_HINTS):
         return ("sangreado", ClinicalAxis.HERIDA)
+    if any(hint in normalized for hint in _VOMITING_HINTS):
+        return ("vomitos", ClinicalAxis.DIGESTIVO)
     if any(hint in normalized for hint in _CONFUSION_HINTS):
         return ("confusion", ClinicalAxis.NINGUNO)
     return None
+
+
+def _asks_episode_count(agent_message: str) -> bool:
+    normalized = normalize_procedure_text(agent_message)
+    return any(hint in normalized for hint in _EPISODE_HINTS)
 
 
 def has_structured_facts(hechos: ClinicalFacts) -> bool:
@@ -95,6 +128,7 @@ def has_structured_facts(hechos: ClinicalFacts) -> bool:
             hechos.disnea is not None,
             hechos.sangreado is not None,
             hechos.vomitos is not None,
+            hechos.vomitos_episodios is not None,
             hechos.confusion is not None,
         )
     )
@@ -142,6 +176,17 @@ def enrich_llm_output(
                 hechos_updates[field_name] = yes_no
                 if llm_output.foco == ClinicalAxis.NINGUNO and axis != ClinicalAxis.NINGUNO:
                     output_updates["foco"] = axis
+
+    if llm_output.hechos.vomitos_episodios is None and _asks_episode_count(
+        _last_agent_message(session)
+    ):
+        episodes = parse_episode_count_response(patient_message)
+        if episodes is not None:
+            hechos_updates["vomitos_episodios"] = episodes
+            if llm_output.hechos.vomitos is None:
+                hechos_updates["vomitos"] = YesNo.SI if episodes > 0 else YesNo.NO
+            if llm_output.foco == ClinicalAxis.NINGUNO:
+                output_updates["foco"] = ClinicalAxis.DIGESTIVO
 
     output_updates["pregunta"] = take_first_question(llm_output.pregunta)
 

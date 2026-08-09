@@ -4,7 +4,8 @@ import pytest
 
 from core.exceptions import InsufficientTextError
 from core.models import ProcedureScenario
-from knowledge.ingest.pdf_parser import map_folder_to_scenario, parse_pdf
+from core.scenarios import map_folder_to_scenario
+from knowledge.ingest.pdf_parser import parse_pdf
 from knowledge.text_utils import compute_content_hash, normalize_text
 
 
@@ -20,6 +21,9 @@ def test_same_content_produces_same_hash() -> None:
 
 def test_map_folder_to_scenario_handles_spaces() -> None:
     assert map_folder_to_scenario("colorectal cancer") == ProcedureScenario.COLORECTAL_CANCER
+    assert map_folder_to_scenario("Otro") == ProcedureScenario.OTHER
+    assert map_folder_to_scenario("cuello uterino") == ProcedureScenario.CERVICAL_CANCER
+    assert map_folder_to_scenario("breast_cancer") == ProcedureScenario.CERVICAL_CANCER
 
 
 def test_parse_pdf_skips_insufficient_text(tmp_path: Path) -> None:

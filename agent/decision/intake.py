@@ -30,12 +30,13 @@ PROCEDURE_KEYWORDS: dict[ProcedureScenario, tuple[str, ...]] = {
         "bowel surgery",
         "cancer de colon",
     ),
-    ProcedureScenario.BREAST_CANCER: (
-        "mastectom",
-        "mama",
-        "seno",
-        "breast",
-        "cancer de mama",
+    ProcedureScenario.CERVICAL_CANCER: (
+        "cuello uterino",
+        "cervix",
+        "cervical",
+        "cancer de cuello uterino",
+        "cancer cervical",
+        "histerectom",
     ),
     ProcedureScenario.TOTAL_JOINT_REPLACEMENT: (
         "artroplast",
@@ -62,12 +63,25 @@ def map_procedure_to_scenario(procedure_text: str) -> ProcedureScenario:
     """Map free-text procedure name to the closest indexed scenario."""
     normalized = normalize_procedure_text(procedure_text)
     if not normalized:
-        return ProcedureScenario.GENERAL
+        return ProcedureScenario.OTHER
 
     for scenario, keywords in PROCEDURE_KEYWORDS.items():
         if any(keyword in normalized for keyword in keywords):
             return scenario
-    return ProcedureScenario.GENERAL
+    return ProcedureScenario.OTHER
+
+
+def detect_procedure_mismatch(
+    patient_message: str,
+    registered_scenario: ProcedureScenario,
+) -> ProcedureScenario | None:
+    """Return a different detected scenario when the patient mentions another surgery."""
+    if registered_scenario == ProcedureScenario.OTHER:
+        return None
+    detected = map_procedure_to_scenario(patient_message)
+    if detected == ProcedureScenario.OTHER or detected == registered_scenario:
+        return None
+    return detected
 
 
 def parse_surgery_date(value: str) -> date:

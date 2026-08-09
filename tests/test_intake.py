@@ -23,12 +23,12 @@ REF = date(2026, 8, 8)
         ("cirugía de vesícula", ProcedureScenario.CHOLECYSTITIS),
         ("cáncer colorrectal", ProcedureScenario.COLORECTAL_CANCER),
         ("colectomía parcial", ProcedureScenario.COLORECTAL_CANCER),
-        ("mastectomía radical", ProcedureScenario.BREAST_CANCER),
-        ("cirugía de mama", ProcedureScenario.BREAST_CANCER),
+        ("cirugía de cuello uterino", ProcedureScenario.CERVICAL_CANCER),
+        ("cáncer cervical", ProcedureScenario.CERVICAL_CANCER),
         ("artroplastia de rodilla", ProcedureScenario.TOTAL_JOINT_REPLACEMENT),
         ("reemplazo total de cadera", ProcedureScenario.TOTAL_JOINT_REPLACEMENT),
-        ("hernia umbilical", ProcedureScenario.GENERAL),
-        ("", ProcedureScenario.GENERAL),
+        ("hernia umbilical", ProcedureScenario.OTHER),
+        ("", ProcedureScenario.OTHER),
     ],
 )
 def test_map_procedure_to_scenario(procedure_text: str, expected: ProcedureScenario) -> None:

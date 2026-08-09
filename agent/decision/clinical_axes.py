@@ -34,7 +34,7 @@ def update_covered_axes(
         updated.add(ClinicalAxis.DOLOR)
     if facts.sangreado is not None:
         updated.add(ClinicalAxis.HERIDA)
-    if facts.vomitos is not None:
+    if facts.vomitos is not None or facts.vomitos_episodios is not None:
         updated.add(ClinicalAxis.DIGESTIVO)
     if facts.disnea is not None:
         updated.add(ClinicalAxis.RESPIRACION)

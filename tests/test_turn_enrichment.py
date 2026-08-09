@@ -96,6 +96,34 @@ def test_enrich_llm_output_fills_disnea_when_agent_asked_breathing() -> None:
     assert enriched.foco == ClinicalAxis.RESPIRACION
 
 
+def test_enrich_llm_output_fills_vomiting_when_agent_asked_nausea() -> None:
+    session = CallSessionState(
+        call_id=uuid4(),
+        procedure_scenario=ProcedureScenario.APPENDICITIS,
+        postop_day=2,
+    )
+    session.turns.append(
+        TurnRecord(
+            turn_number=2,
+            patient_input="9",
+            agent_response="¿Ha tenido náuseas o vómitos desde la cirugía?",
+            rag_query="q",
+        )
+    )
+    llm_output = LLMTurnOutput(
+        categoria=ResponseCategory.RESPUESTA_VALIDA,
+        evidencia_suficiente=False,
+        hechos=ClinicalFacts(),
+        texto_paciente="Entiendo.",
+        pregunta="¿Ha podido movilizarse?",
+    )
+
+    enriched = enrich_llm_output(session, "si", llm_output, reference_date=date(2026, 8, 8))
+
+    assert enriched.hechos.vomitos == YesNo.SI
+    assert enriched.foco == ClinicalAxis.DIGESTIVO
+
+
 def test_compose_response_skips_disclaimer_for_valid_numeric_pain() -> None:
     llm_output = LLMTurnOutput(
         categoria=ResponseCategory.RESPUESTA_VALIDA,
@@ -107,7 +135,11 @@ def test_compose_response_skips_disclaimer_for_valid_numeric_pain() -> None:
         fuentes=[],
     )
 
-    response = ConversationOrchestrator._compose_response("4", llm_output)
+    response = ConversationOrchestrator._compose_response(
+        "4",
+        llm_output,
+        registered_scenario=ProcedureScenario.APPENDICITIS,
+    )
 
     assert "No tengo información" not in response
     assert "dolor de 4" in response
@@ -125,7 +157,11 @@ def test_compose_response_skips_disclaimer_for_wound_answer() -> None:
         fuentes=[],
     )
 
-    response = ConversationOrchestrator._compose_response("esta sanando", llm_output)
+    response = ConversationOrchestrator._compose_response(
+        "esta sanando",
+        llm_output,
+        registered_scenario=ProcedureScenario.APPENDICITIS,
+    )
 
     assert "No tengo información" not in response
     assert "sanando" in response.lower()
@@ -144,6 +180,7 @@ def test_compose_response_uses_disclaimer_without_double_question() -> None:
     response = ConversationOrchestrator._compose_response(
         "¿Qué antibiótico debo tomar?",
         llm_output,
+        registered_scenario=ProcedureScenario.APPENDICITIS,
     )
 
     assert "No tengo información" in response

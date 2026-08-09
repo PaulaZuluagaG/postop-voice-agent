@@ -7,7 +7,7 @@ from pathlib import Path
 
 from core.config import Settings, get_settings
 from core.exceptions import InsufficientTextError
-from core.models import IngestReport, ParsedDocument
+from core.models import IngestReport, ParsedDocument, ProcedureScenario
 from knowledge.ingest.chunker import TokenChunker
 from knowledge.ingest.embedder import EmbeddingService
 from knowledge.ingest.pdf_parser import iter_pdf_files, parse_pdf
@@ -74,8 +74,17 @@ class IngestPipeline:
         report.total_chunks = sum(source.chunk_count for source in self._store.list_sources())
         return report
 
-    def index_document(self, file_path: Path) -> ParsedDocument:
-        document = parse_pdf(file_path, self._settings)
+    def index_document(
+        self,
+        file_path: Path,
+        *,
+        procedure_scenario: ProcedureScenario | None = None,
+    ) -> ParsedDocument:
+        document = parse_pdf(
+            file_path,
+            self._settings,
+            procedure_scenario=procedure_scenario,
+        )
         self._store.create_collection(recreate=False)
         self._store.delete_document_chunks(document.source_id)
         self._index_document(document)

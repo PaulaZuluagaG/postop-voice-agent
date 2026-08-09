@@ -150,15 +150,11 @@ class QdrantVectorStore:
         score_threshold = score_threshold or self._settings.retrieval_score_threshold
 
         scenario_filter = qmodels.Filter(
-            should=[
+            must=[
                 qmodels.FieldCondition(
                     key="procedure_scenario",
                     match=qmodels.MatchValue(value=procedure_scenario),
-                ),
-                qmodels.FieldCondition(
-                    key="is_general",
-                    match=qmodels.MatchValue(value=True),
-                ),
+                )
             ]
         )
 
@@ -186,14 +182,13 @@ class QdrantVectorStore:
                 page_start=int(payload.get("page_start", 0)),
                 page_end=int(payload.get("page_end", 0)),
                 procedure_scenario=ProcedureScenario(
-                    str(payload.get("procedure_scenario", ProcedureScenario.GENERAL.value))
+                    str(payload.get("procedure_scenario", ProcedureScenario.OTHER.value))
                 ),
                 document_type=DocumentType(
                     str(payload.get("document_type", DocumentType.OTHER.value))
                 ),
                 language=str(payload.get("language", "es")),
                 file_name=str(payload.get("file_name", "")),
-                is_general=bool(payload.get("is_general", False)),
             )
             results.append((chunk, float(hit.score or 0.0)))
         return results
@@ -221,9 +216,7 @@ class QdrantVectorStore:
                             file_name=str(payload.get("file_name", "")),
                             procedure_scenario=ProcedureScenario(
                                 str(
-                                    payload.get(
-                                        "procedure_scenario", ProcedureScenario.GENERAL.value
-                                    )
+                                    payload.get("procedure_scenario", ProcedureScenario.OTHER.value)
                                 )
                             ),
                             document_type=DocumentType(
@@ -231,7 +224,6 @@ class QdrantVectorStore:
                             ),
                             language=str(payload.get("language", "es")),
                             chunk_count=0,
-                            is_general=bool(payload.get("is_general", False)),
                         )
                     aggregates[source_id].chunk_count += 1
                 if offset is None:
@@ -277,6 +269,5 @@ class QdrantVectorStore:
             else str(chunk.document_type),
             "language": chunk.language,
             "file_name": chunk.file_name,
-            "is_general": chunk.is_general,
             "content_hash": content_hash,
         }

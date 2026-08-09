@@ -80,7 +80,6 @@ def test_orchestrator_uses_python_alert_message() -> None:
     )
     session = orchestrator.start_call(
         procedure_scenario=ProcedureScenario.CHOLECYSTITIS,
-        postop_day=1,
         call_id=uuid4(),
     )
     turn = orchestrator.process_turn(session.call_id, "Me siento muy mal")
@@ -109,7 +108,6 @@ def test_orchestrator_no_evidence_disclaimer() -> None:
     )
     session = orchestrator.start_call(
         procedure_scenario=ProcedureScenario.APPENDICITIS,
-        postop_day=3,
         call_id=uuid4(),
     )
     turn = orchestrator.process_turn(session.call_id, "¿Qué antibiótico debo tomar?")
@@ -138,8 +136,7 @@ def test_orchestrator_accumulates_score_across_turns() -> None:
         llm=HighPainLLM(),
     )
     session = orchestrator.start_call(
-        procedure_scenario=ProcedureScenario.BREAST_CANCER,
-        postop_day=1,
+        procedure_scenario=ProcedureScenario.CERVICAL_CANCER,
         call_id=uuid4(),
     )
     first = orchestrator.process_turn(session.call_id, "Me duele un poco")
@@ -155,7 +152,6 @@ def test_start_call_with_registration_leaves_opening_for_begin_triage() -> None:
         patient_name="María",
         patient_id="P-001",
         procedure_scenario=ProcedureScenario.APPENDICITIS,
-        procedure_name="Apendicitis",
         surgery_date="ayer",
     )
     assert session.postop_day == 2
@@ -163,34 +159,18 @@ def test_start_call_with_registration_leaves_opening_for_begin_triage() -> None:
 
 
 def test_begin_triage_without_procedure_evidence() -> None:
-    class GeneralOnlyRetriever(FakeRetriever):
+    class EmptyRetriever(FakeRetriever):
         def retrieve(self, *args, **kwargs):
-            chunk = RetrievedChunk(
-                chunk_id="chunk-general",
-                source_id="src_general",
-                text="Guía general postoperatoria.",
-                token_count=10,
-                chunk_index=0,
-                page_start=1,
-                page_end=1,
-                procedure_scenario=ProcedureScenario.GENERAL,
-                document_type=DocumentType.GUIDE,
-                language="es",
-                file_name="general.pdf",
-                is_general=True,
-                score=0.8,
-            )
-            return "query", [chunk], 1.0
+            return "query", [], 1.0
 
     orchestrator = ConversationOrchestrator(
-        retriever=GeneralOnlyRetriever(),
+        retriever=EmptyRetriever(),
         llm=FakeLLM(),
         reference_date=date(2026, 8, 8),
     )
     session = orchestrator.start_call(
         patient_name="María",
         procedure_scenario=ProcedureScenario.APPENDICITIS,
-        procedure_name="Apendicitis",
         surgery_date="ayer",
         call_id=uuid4(),
     )
@@ -211,7 +191,6 @@ def test_begin_triage_with_procedure_evidence() -> None:
     session = orchestrator.start_call(
         patient_name="María",
         procedure_scenario=ProcedureScenario.APPENDICITIS,
-        procedure_name="Apendicitis",
         surgery_date="ayer",
         call_id=uuid4(),
     )
@@ -219,3 +198,21 @@ def test_begin_triage_with_procedure_evidence() -> None:
     assert "Sí cuento con guías clínicas sobre Apendicitis" in opening
     assert "apendicectomía" in opening.lower()
     assert opening.count("?") == 1
+
+
+def test_orchestrator_procedure_mismatch_notice() -> None:
+    orchestrator = ConversationOrchestrator(
+        retriever=FakeRetriever(),
+        llm=FakeLLM(),
+    )
+    session = orchestrator.start_call(
+        procedure_scenario=ProcedureScenario.APPENDICITIS,
+        call_id=uuid4(),
+    )
+    turn = orchestrator.process_turn(
+        session.call_id,
+        "Después de mi artroplastia de rodilla me duele mucho la herida",
+    )
+    assert "no tengo documentación" in turn.agent_response.lower()
+    assert "Reemplazo articular" in turn.agent_response
+    assert "Apendicitis" in turn.agent_response

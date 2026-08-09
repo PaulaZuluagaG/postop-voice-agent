@@ -28,9 +28,9 @@ class ProcedureScenario(StrEnum):
     APPENDICITIS = "appendicitis"
     CHOLECYSTITIS = "cholecystitis"
     COLORECTAL_CANCER = "colorectal_cancer"
-    BREAST_CANCER = "breast_cancer"
+    CERVICAL_CANCER = "cervical_cancer"
     TOTAL_JOINT_REPLACEMENT = "total_joint_replacement"
-    GENERAL = "general"
+    OTHER = "otro"
 
 
 class ResponseCategory(StrEnum):
@@ -74,6 +74,54 @@ def coerce_yes_no(value: object) -> YesNo | None:
     return None
 
 
+def coerce_optional_float(value: object) -> float | None:
+    """Normalize numeric LLM facts that may arrive as strings."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        stripped = value.strip().replace(",", ".")
+        if not stripped:
+            return None
+        try:
+            return float(stripped)
+        except ValueError:
+            return None
+    return None
+
+
+def coerce_episode_count(value: object) -> int | None:
+    """Normalize episode counts from numeric LLM output."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if isinstance(value, float):
+        return int(value) if value >= 0 else None
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            return int(stripped)
+    return None
+
+
+def resolve_vomiting_count(
+    presence: YesNo | None,
+    episodes: int | None,
+) -> int | None:
+    """Map LLM vomiting facts to a single count for scoring."""
+    if episodes is not None:
+        return episodes
+    if presence == YesNo.SI:
+        return 1
+    if presence == YesNo.NO:
+        return 0
+    return None
+
+
 class ParsedPage(BaseModel):
     page_number: int
     text: str
@@ -89,7 +137,6 @@ class ParsedDocument(BaseModel):
     content_hash: str
     page_count: int
     char_count: int
-    is_general: bool = False
     pages: list[ParsedPage]
 
 
@@ -105,7 +152,6 @@ class TextChunk(BaseModel):
     document_type: DocumentType
     language: str
     file_name: str
-    is_general: bool = False
 
 
 class RetrievedChunk(TextChunk):
@@ -128,16 +174,32 @@ class ClinicalFacts(BaseModel):
     fiebre_c: float | None = Field(default=None, alias="FIEBRE_C")
     disnea: YesNo | None = Field(default=None, alias="DISNEA")
     sangreado: YesNo | None = Field(default=None, alias="SANGREADO")
-    vomitos: int | None = Field(default=None, alias="VOMITOS", ge=0)
+    vomitos: YesNo | None = Field(default=None, alias="VOMITOS")
+    vomitos_episodios: int | None = Field(default=None, alias="VOMITOS_EPISODIOS", ge=0)
     confusion: YesNo | None = Field(default=None, alias="CONFUSION")
     procedimiento: str | None = Field(default=None, alias="PROCEDIMIENTO")
     fecha_cirugia: str | None = Field(default=None, alias="FECHA_CIRUGIA")
 
-    @field_validator("disnea", "sangreado", "confusion", mode="before")
+    @field_validator("dolor_0_10", "fiebre_c", mode="before")
+    @classmethod
+    def _coerce_numeric_fields(cls, value: object) -> object:
+        coerced = coerce_optional_float(value)
+        return coerced if coerced is not None else value
+
+    @field_validator("disnea", "sangreado", "confusion", "vomitos", mode="before")
     @classmethod
     def _coerce_yes_no_fields(cls, value: object) -> object:
         coerced = coerce_yes_no(value)
         return coerced if coerced is not None else value
+
+    @field_validator("vomitos_episodios", mode="before")
+    @classmethod
+    def _coerce_episode_count_field(cls, value: object) -> object:
+        coerced = coerce_episode_count(value)
+        return coerced if coerced is not None else value
+
+    def resolved_vomiting_count(self) -> int | None:
+        return resolve_vomiting_count(self.vomitos, self.vomitos_episodios)
 
     def to_patient_facts(self) -> PatientFacts:
         return PatientFacts(
@@ -145,7 +207,7 @@ class ClinicalFacts(BaseModel):
             fever_celsius=self.fiebre_c,
             dyspnea=_yes_no_to_bool(self.disnea),
             bleeding=_yes_no_to_bool(self.sangreado),
-            vomiting_count=self.vomitos,
+            vomiting_count=self.resolved_vomiting_count(),
             confusion=_yes_no_to_bool(self.confusion),
         )
 
@@ -203,7 +265,6 @@ class CallSessionState(BaseModel):
     patient_name: str = "Paciente"
     patient_id: str | None = None
     opening_message: str | None = None
-    procedure_name: str | None = None
     surgery_date: str | None = None
     covered_axes: set[ClinicalAxis] = Field(default_factory=set)
     cumulative_score: int = 0
@@ -235,7 +296,6 @@ class SourceAggregate(BaseModel):
     document_type: DocumentType
     language: str
     chunk_count: int
-    is_general: bool = False
 
 
 class IngestReport(BaseModel):

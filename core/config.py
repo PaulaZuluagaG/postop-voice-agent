@@ -33,14 +33,15 @@ class Settings(BaseSettings):
     min_document_chars: int = 200
 
     # Retrieval
-    retrieval_top_k: int = 5
-    retrieval_score_threshold: float = 0.35
+    retrieval_top_k: int = 2
+    retrieval_score_threshold: float = 0.70
 
-    # LLM (Ollama)
-    ollama_host: str = "http://127.0.0.1:11434"
-    ollama_model: str = "phi3.5"
-    ollama_temperature: float = 0.1
-    ollama_max_output_tokens: int = 512
+    # LLM (Groq)
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.1-70b-versatile"
+    groq_temperature: float = 0.1
+    groq_max_output_tokens: int = 2048
+    document_validation_excerpt_chars: int = 3000
 
     # Agent
     max_turns_per_call: int = 10
@@ -50,6 +51,12 @@ class Settings(BaseSettings):
 
     # Dataset
     textos_dir: Path = Path("dataset/textos")
+
+    # OCR (scanned PDF pages — requires Tesseract)
+    ocr_enabled: bool = True
+    ocr_languages: str = "spa+eng"
+    ocr_dpi: int = 200
+    ocr_min_chars: int = 80
 
     @field_validator("calls_log_dir", "textos_dir", mode="before")
     @classmethod

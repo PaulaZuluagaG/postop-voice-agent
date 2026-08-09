@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import re
 from pathlib import Path
 
 import pymupdf
@@ -11,23 +10,9 @@ import pymupdf
 from core.config import Settings, get_settings
 from core.exceptions import InsufficientTextError
 from core.models import DocumentType, ParsedDocument, ParsedPage, ProcedureScenario
-from knowledge.text_utils import compute_content_hash, normalize_text
-
-FOLDER_TO_SCENARIO: dict[str, ProcedureScenario] = {
-    "appendicitis": ProcedureScenario.APPENDICITIS,
-    "cholecystitis": ProcedureScenario.CHOLECYSTITIS,
-    "colorectal cancer": ProcedureScenario.COLORECTAL_CANCER,
-    "breast_cancer": ProcedureScenario.BREAST_CANCER,
-    "total joint replacement": ProcedureScenario.TOTAL_JOINT_REPLACEMENT,
-}
-
-GENERAL_KEYWORDS: tuple[str, ...] = (
-    "cuidado estandarizado",
-    "nursing review",
-    "standardized",
-    "general care",
-    "postoperative care for patients",
-)
+from core.scenarios import map_folder_to_scenario
+from knowledge.ingest.pdf_ocr import extract_page_text
+from knowledge.text_utils import compute_content_hash, normalize_clinical_text
 
 DOCUMENT_TYPE_RULES: tuple[tuple[tuple[str, ...], DocumentType], ...] = (
     (("guia", "guía", "guide", "manual", "instructivo"), DocumentType.GUIDE),
@@ -45,6 +30,8 @@ DOCUMENT_TYPE_RULES: tuple[tuple[tuple[str, ...], DocumentType], ...] = (
 
 
 def _detect_language(text: str) -> str:
+    import re
+
     sample = text[:4000].lower()
     spanish_markers = (" de ", " la ", " el ", " que ", " con ", " para ", " dolor ", " paciente ")
     english_markers = (" the ", " and ", " with ", " patient ", " postoperative ", " surgery ")
@@ -63,40 +50,35 @@ def _infer_document_type(file_name: str) -> DocumentType:
     return DocumentType.OTHER
 
 
-def _is_general_document(file_name: str, document_type: DocumentType) -> bool:
-    lowered = file_name.lower()
-    if document_type in {DocumentType.GENERAL, DocumentType.PROTOCOL}:
-        return True
-    return any(keyword in lowered for keyword in GENERAL_KEYWORDS)
-
-
 def _build_source_id(file_path: Path) -> str:
     digest = hashlib.sha256(str(file_path.resolve()).encode("utf-8")).hexdigest()[:16]
     return f"src_{digest}"
 
 
-def map_folder_to_scenario(folder_name: str) -> ProcedureScenario:
-    scenario = FOLDER_TO_SCENARIO.get(folder_name.lower())
-    if scenario is None:
-        raise ValueError(f"Unknown procedure folder: {folder_name}")
-    return scenario
-
-
-def parse_pdf(file_path: Path, settings: Settings | None = None) -> ParsedDocument:
+def parse_pdf(
+    file_path: Path,
+    settings: Settings | None = None,
+    *,
+    procedure_scenario: ProcedureScenario | None = None,
+) -> ParsedDocument:
     """Extract text page-by-page from a PDF and attach metadata."""
     settings = settings or get_settings()
     file_path = file_path.resolve()
-    parent_folder = file_path.parent.name
-    procedure_scenario = map_folder_to_scenario(parent_folder)
+    if procedure_scenario is None:
+        procedure_scenario = map_folder_to_scenario(file_path.parent.name)
     document_type = _infer_document_type(file_path.name)
-    is_general = _is_general_document(file_path.name, document_type)
 
     pages: list[ParsedPage] = []
     with pymupdf.open(file_path) as document:
         for page_index in range(document.page_count):
             page = document.load_page(page_index)
-            raw_text = page.get_text("text") or ""
-            cleaned = normalize_text(raw_text)
+            cleaned = extract_page_text(
+                page,
+                ocr_enabled=settings.ocr_enabled,
+                ocr_languages=settings.ocr_languages,
+                ocr_dpi=settings.ocr_dpi,
+                ocr_min_chars=settings.ocr_min_chars,
+            )
             if cleaned:
                 pages.append(ParsedPage(page_number=page_index + 1, text=cleaned))
 
@@ -116,9 +98,29 @@ def parse_pdf(file_path: Path, settings: Settings | None = None) -> ParsedDocume
         content_hash=compute_content_hash(full_text),
         page_count=len(pages),
         char_count=len(full_text),
-        is_general=is_general,
         pages=pages,
     )
+
+
+def extract_document_excerpt(file_path: Path, *, max_chars: int = 3000) -> str:
+    """Return normalized text from the first pages for category validation."""
+    settings = get_settings()
+    parts: list[str] = []
+    with pymupdf.open(file_path) as document:
+        for page_index in range(min(3, document.page_count)):
+            page = document.load_page(page_index)
+            cleaned = extract_page_text(
+                page,
+                ocr_enabled=settings.ocr_enabled,
+                ocr_languages=settings.ocr_languages,
+                ocr_dpi=settings.ocr_dpi,
+                ocr_min_chars=settings.ocr_min_chars,
+            )
+            if cleaned:
+                parts.append(cleaned)
+            if sum(len(part) for part in parts) >= max_chars:
+                break
+    return normalize_clinical_text(" ".join(parts))[:max_chars]
 
 
 def iter_pdf_files(textos_dir: Path) -> list[Path]:
