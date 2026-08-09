@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
+from collections.abc import AsyncIterator
 from datetime import date
 from uuid import UUID, uuid4
 
@@ -22,6 +24,7 @@ from agent.decision.scoring import (
 )
 from agent.decision.turn_enrichment import enrich_llm_output, take_first_question
 from agent.llm.groq_client import GroqClient
+from agent.llm.streaming import GroqStreamingClient
 from agent.messages import (
     ALERT_MESSAGE,
     DEFAULT_OPENING_QUESTION,
@@ -56,12 +59,17 @@ class ConversationOrchestrator:
         *,
         retriever: ContextualRetriever | None = None,
         llm: GroqClient | None = None,
+        streaming_llm: GroqStreamingClient | None = None,
         trace_logger: CallTraceLogger | None = None,
         reference_date: date | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self._retriever = retriever or ContextualRetriever(self._settings)
         self._llm = llm or GroqClient(self._settings)
+        self._streaming_llm = streaming_llm or GroqStreamingClient(
+            self._settings,
+            groq_client=self._llm,
+        )
         self._trace = trace_logger or CallTraceLogger(self._settings)
         self._reference_date = reference_date
         self._sessions: dict[UUID, CallSessionState] = {}
@@ -278,6 +286,227 @@ class ConversationOrchestrator:
             self.close_call(session.call_id, reason="max_turns_reached")
 
         return turn
+
+    async def stream_turn_response(
+        self,
+        call_id: UUID,
+        patient_message: str,
+        *,
+        cancel_event: asyncio.Event | None = None,
+    ) -> AsyncIterator[str]:
+        """Genera tokens hablables en streaming y finaliza el turno al completar."""
+        session = self.get_session(call_id)
+        if session.call_closed:
+            raise SessionError("Call is already closed")
+
+        turn_start = time.perf_counter()
+        conversation_context = self._build_conversation_context(session)
+        ejes_pendientes = pending_axes(session.covered_axes)
+        procedimiento = scenario_label(session.procedure_scenario)
+        mismatch = detect_procedure_mismatch(patient_message, session.procedure_scenario)
+
+        rag_query, retrieved, retrieval_ms = self._retriever.retrieve(
+            patient_message,
+            procedure_scenario=session.procedure_scenario,
+            postop_day=session.postop_day,
+            conversation_context=conversation_context,
+        )
+
+        llm_start = time.perf_counter()
+        stream = self._streaming_llm.stream_turn(
+            patient_message=patient_message,
+            patient_name=session.patient_name,
+            procedimiento=procedimiento,
+            dia_postop=session.postop_day,
+            ejes_cubiertos=session.covered_axes,
+            ejes_pendientes=ejes_pendientes,
+            puntaje_total=session.cumulative_score,
+            turno=session.turn_count + 1,
+            max_turnos=self._settings.max_turns_per_call,
+            conversation_history=conversation_context,
+            retrieved_chunks=retrieved,
+            reference_date=self._reference_date or date.today(),
+            cancel_event=cancel_event,
+        )
+
+        streamed_parts: list[str] = []
+        async for token in stream.tokens:
+            if cancel_event and cancel_event.is_set():
+                return
+            streamed_parts.append(token)
+            yield token
+
+        llm_output = await stream.output_future
+        llm_ms = (time.perf_counter() - llm_start) * 1000
+
+        llm_output = enrich_llm_output(
+            session,
+            patient_message,
+            llm_output,
+            reference_date=self._reference_date,
+        )
+        session.covered_axes = update_covered_axes(session.covered_axes, llm_output)
+
+        agent_response = self._compose_response(
+            patient_message,
+            llm_output,
+            mismatch=mismatch,
+            registered_scenario=session.procedure_scenario,
+        )
+
+        decision_start = time.perf_counter()
+        symptoms = llm_output.to_patient_facts()
+        turn_score, score_rules = score_turn(symptoms)
+        cumulative_score, cumulative_rules = apply_cumulative_score(
+            session.cumulative_score,
+            turn_score,
+            categoria=llm_output.categoria,
+            settings=self._settings,
+        )
+        session.cumulative_score = cumulative_score
+        rules = score_rules + cumulative_rules
+        severity = resolve_severity(session.cumulative_score, self._settings)
+        alert = should_force_alert(
+            session.cumulative_score,
+            implicit_alert=llm_output.implicit_alert,
+            settings=self._settings,
+        )
+
+        if alert:
+            agent_response = ALERT_MESSAGE
+            session.alert_triggered = True
+            severity = SeverityLevel.RED
+            session.call_closed = True
+
+        streamed_text = "".join(streamed_parts).strip()
+        if not (cancel_event and cancel_event.is_set()):
+            if alert and agent_response != streamed_text:
+                if streamed_text:
+                    yield " "
+                yield agent_response
+            elif agent_response.startswith(streamed_text):
+                suffix = agent_response[len(streamed_text) :].strip()
+                if suffix:
+                    yield f" {suffix}"
+            elif agent_response != streamed_text:
+                yield agent_response
+
+        session.current_severity = severity
+        session.turn_count += 1
+        for chunk in retrieved:
+            session.sources_used.add(chunk.source_id)
+        for source_id in llm_output.fuentes:
+            session.sources_used.add(source_id)
+
+        decision_ms = (time.perf_counter() - decision_start) * 1000
+        total_ms = (time.perf_counter() - turn_start) * 1000
+
+        turn = TurnRecord(
+            turn_number=session.turn_count,
+            patient_input=patient_message,
+            agent_response=agent_response,
+            rag_query=rag_query,
+            retrieved_chunks=retrieved,
+            llm_output=llm_output,
+            symptoms=symptoms,
+            turn_score=turn_score,
+            cumulative_score=session.cumulative_score,
+            rules_applied=rules,
+            alert_triggered=alert,
+            severity=severity,
+            timings=TurnTimings(
+                retrieval_ms=retrieval_ms,
+                llm_ms=llm_ms,
+                decision_ms=decision_ms,
+                total_ms=total_ms,
+            ),
+        )
+        session.turns.append(turn)
+        self._trace.log_turn(session.call_id, turn)
+
+        if alert:
+            self.close_call(session.call_id, reason="alert_triggered")
+        elif llm_output.pregunta is None and not alert:
+            self.close_call(session.call_id, reason="llm_closure")
+        elif session.turn_count >= self._settings.max_turns_per_call:
+            self.close_call(session.call_id, reason="max_turns_reached")
+
+    async def stream_opening_response(
+        self,
+        call_id: UUID,
+        *,
+        cancel_event: asyncio.Event | None = None,
+    ) -> AsyncIterator[str]:
+        """Genera el mensaje de apertura en streaming."""
+        session = self.get_session(call_id)
+        if session.opening_message:
+            yield session.opening_message
+            return
+
+        procedimiento = scenario_label(session.procedure_scenario)
+        ejes_pendientes = pending_axes(session.covered_axes)
+        bootstrap_message = (
+            f"cuidados postoperatorios complicaciones seguimiento "
+            f"{procedimiento} día postoperatorio {session.postop_day}"
+        )
+
+        rag_query, retrieved, retrieval_ms = self._retriever.retrieve(
+            bootstrap_message,
+            procedure_scenario=session.procedure_scenario,
+            postop_day=session.postop_day,
+        )
+        has_evidence = has_procedure_specific_evidence(retrieved, session.procedure_scenario)
+
+        llm_start = time.perf_counter()
+        stream = self._streaming_llm.stream_opening(
+            patient_name=session.patient_name,
+            procedimiento=procedimiento,
+            dia_postop=session.postop_day,
+            ejes_pendientes=ejes_pendientes,
+            has_procedure_evidence=has_evidence,
+            retrieved_chunks=retrieved,
+            reference_date=self._reference_date or date.today(),
+            cancel_event=cancel_event,
+        )
+
+        streamed_parts: list[str] = []
+        async for token in stream.tokens:
+            if cancel_event and cancel_event.is_set():
+                return
+            streamed_parts.append(token)
+            yield token
+
+        llm_output = await stream.output_future
+        llm_ms = (time.perf_counter() - llm_start) * 1000
+        opening_message = self._compose_opening(session, llm_output, has_evidence)
+        session.opening_message = opening_message
+
+        streamed_text = "".join(streamed_parts).strip()
+        if not (cancel_event and cancel_event.is_set()):
+            if opening_message.startswith(streamed_text):
+                suffix = opening_message[len(streamed_text) :].strip()
+                if suffix:
+                    yield f" {suffix}"
+            elif opening_message != streamed_text:
+                yield opening_message
+
+        for chunk in retrieved:
+            session.sources_used.add(chunk.source_id)
+        for source_id in llm_output.fuentes:
+            session.sources_used.add(source_id)
+
+        self._trace.log_event(
+            call_id,
+            "triage_opening",
+            {
+                "opening_message": opening_message,
+                "has_procedure_evidence": has_evidence,
+                "rag_query": rag_query,
+                "retrieved_chunk_count": len(retrieved),
+                "retrieval_ms": retrieval_ms,
+                "llm_ms": llm_ms,
+            },
+        )
 
     def close_call(self, call_id: UUID, *, reason: str = "manual_close") -> CallSummary:
         session = self.get_session(call_id)

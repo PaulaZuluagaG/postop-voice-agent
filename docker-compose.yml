@@ -14,5 +14,31 @@ services:
       retries: 10
       start_period: 5s
 
+  voice-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: postop-voice-agent
+    env_file:
+      - .env
+    environment:
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    # Modo texto por defecto; use `--mode voice` para micrófono + Deepgram.
+    command: >
+      uv run postop-voice
+      --mode text
+      --name Maria
+      --patient-id P001
+      --scenario appendicitis
+      --surgery-date ayer
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./logs:/app/logs
+
 volumes:
   qdrant_data:
