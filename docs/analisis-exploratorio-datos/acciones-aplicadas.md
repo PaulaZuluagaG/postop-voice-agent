@@ -113,7 +113,7 @@ dataset/textos/
 └── Otro/                  (4 PDFs)    ← nuevo
 ```
 
-Total: **107 PDFs** (sin duplicados).
+Total: **107 PDFs** (107 nombres únicos; 107 `content_hash` únicos — ver sección 2 del notebook EDA).
 
 ---
 

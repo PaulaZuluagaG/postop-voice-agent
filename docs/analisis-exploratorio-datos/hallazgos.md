@@ -104,7 +104,22 @@ Medimos la “limpieza” del texto con un puntaje compuesto **0–1** (`junk_sc
 
 ---
 
-## 8. Conclusión del EDA
+## 8. Documentos duplicados
+
+El notebook calcula `content_hash` con el mismo algoritmo que `postop-ingest` (`compute_content_hash`) y busca:
+
+| Tipo | Criterio | Resultado en corpus actual |
+|------|----------|----------------------------|
+| Nombre repetido | Mismo `file_name` en más de una ruta | 0 grupos |
+| Contenido idéntico | Mismo `content_hash` (texto normalizado) | 0 grupos |
+
+**107 PDFs → 107 nombres únicos y 107 hashes únicos** (sin duplicados exactos detectados).
+
+**Limitación:** el EDA extrae texto nativo del PDF sin OCR. Dos copias del mismo documento escaneado podrían no detectarse si ambas tienen poco texto extraíble.
+
+---
+
+## 9. Conclusión del EDA
 
 | Área | Estado | Prioridad |
 |------|--------|-----------|
@@ -113,5 +128,6 @@ Medimos la “limpieza” del texto con un puntaje compuesto **0–1** (`junk_sc
 | 4 PDFs en categoría equivocada | ⚠️ Revisar | Media |
 | PDFs escaneados | ⚠️ 12 con señal | Alta |
 | Ruido bibliográfico | ⚠️ 15 con junk alto | Media |
+| Documentos duplicados | ✅ 0 por nombre y 0 por content_hash | — |
 
 El corpus **sirve para RAG**, pero necesitaba las cuatro acciones descritas en [acciones-aplicadas.md](./acciones-aplicadas.md) antes de una re-ingestión confiable.
