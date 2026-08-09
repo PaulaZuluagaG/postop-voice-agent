@@ -38,10 +38,20 @@ class Settings(BaseSettings):
 
     # LLM (Groq)
     groq_api_key: str = ""
-    groq_model: str = "llama-3.1-70b-versatile"
+    groq_model: str = "llama-3.3-70b-versatile"
     groq_temperature: float = 0.1
     groq_max_output_tokens: int = 2048
     document_validation_excerpt_chars: int = 3000
+
+    # Voz (Pipecat + Deepgram + Kokoro)
+    deepgram_api_key: str = ""
+    deepgram_model: str = "nova-2"
+    deepgram_language: str = "es"
+    kokoro_lang_code: str = "e"
+    kokoro_voice: str = "ef_dora"
+    kokoro_speed: float = 1.0
+    voice_sample_rate: int = 24000
+    voice_pipeline_idle_timeout_secs: int = 300
 
     # Agent
     max_turns_per_call: int = 10
