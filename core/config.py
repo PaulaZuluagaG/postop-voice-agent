@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     yellow_score_threshold: int = 8
     calls_log_dir: Path = Path("logs/calls")
 
+    # Admin API
+    admin_token: str = ""
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+
     # Dataset
     textos_dir: Path = Path("dataset/textos")
 
