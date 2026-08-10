@@ -12,9 +12,10 @@ from agent.llm.json_stream import JsonStringFieldExtractor
 from agent.llm.payload_normalizer import normalize_llm_turn_payload
 from agent.llm.prompts import SYSTEM_PROMPT, build_opening_user_prompt, build_user_prompt
 from core.config import Settings, get_settings
-from core.exceptions import LLMError
+from core.exceptions import LLMCancelledError, LLMError
+from core.groq_limiter import groq_call_slot
 from core.models import ClinicalAxis, LLMTurnOutput, RetrievedChunk
-from core.retry import with_retry
+from core.retry import with_groq_retry
 
 
 @dataclass
@@ -23,6 +24,16 @@ class GroqStreamHandle:
 
     tokens: AsyncIterator[str]
     output_future: asyncio.Future[LLMTurnOutput]
+
+
+async def drain_output_future(future: asyncio.Future[LLMTurnOutput]) -> None:
+    """Await *future* and swallow errors to avoid unhandled future exceptions."""
+    if future.cancelled():
+        return
+    try:
+        await future
+    except Exception:
+        return
 
 
 class GroqStreamingClient:
@@ -139,42 +150,47 @@ class GroqStreamingClient:
         cancel_event: asyncio.Event | None,
     ) -> LLMTurnOutput:
         def _call() -> LLMTurnOutput:
-            extractor = JsonStringFieldExtractor("texto_paciente")
-            chunks: list[str] = []
+            with groq_call_slot():
+                extractor = JsonStringFieldExtractor("texto_paciente")
+                chunks: list[str] = []
 
-            stream = self._groq._client.chat.completions.create(  # noqa: SLF001
-                model=self._settings.groq_model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=self._settings.groq_temperature,
-                max_tokens=self._settings.groq_max_output_tokens,
-                response_format={"type": "json_object"},
-                stream=True,
-            )
+                stream = self._groq._client.chat.completions.create(  # noqa: SLF001
+                    model=self._settings.groq_model,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=self._settings.groq_temperature,
+                    max_tokens=self._settings.groq_max_output_tokens,
+                    response_format={"type": "json_object"},
+                    stream=True,
+                )
 
-            for chunk in stream:
-                if cancel_event and cancel_event.is_set():
-                    break
-                if not chunk.choices:
-                    continue
-                delta = chunk.choices[0].delta.content
-                if not delta:
-                    continue
-                chunks.append(delta)
-                spoken = extractor.feed(delta)
-                if spoken:
-                    on_token(spoken)
+                for chunk in stream:
+                    if cancel_event and cancel_event.is_set():
+                        break
+                    if not chunk.choices:
+                        continue
+                    delta = chunk.choices[0].delta.content
+                    if not delta:
+                        continue
+                    chunks.append(delta)
+                    spoken = extractor.feed(delta)
+                    if spoken:
+                        on_token(spoken)
 
             raw_text = "".join(chunks)
             if not raw_text.strip():
+                if cancel_event and cancel_event.is_set():
+                    raise LLMCancelledError("Groq streaming interrumpido")
                 raise LLMError("Groq streaming devolvió una respuesta vacía")
             payload = normalize_llm_turn_payload(self._groq._parse_json(raw_text))  # noqa: SLF001
             output = LLMTurnOutput.model_validate(payload)
             return self._groq._validate_sources(output, retrieved_chunks)  # noqa: SLF001
 
         try:
-            return with_retry(_call, operation_name="groq_stream_structured")
+            return with_groq_retry(_call, operation_name="groq_stream_structured")
+        except LLMCancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001
             raise LLMError(f"Groq streaming failed: {exc}") from exc

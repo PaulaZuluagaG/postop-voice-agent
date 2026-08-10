@@ -37,5 +37,9 @@ class LLMError(PostOpError):
     """LLM invocation or parsing failed."""
 
 
+class LLMCancelledError(LLMError):
+    """LLM generation was interrupted before producing output."""
+
+
 class SessionError(PostOpError):
     """Invalid call session state."""

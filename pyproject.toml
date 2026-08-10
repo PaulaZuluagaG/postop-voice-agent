@@ -5,6 +5,7 @@ description = "Post-operative voice agent with clinical RAG and decision logic"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "certifi>=2024.0.0",
     "fastapi>=0.115.0",
     "groq>=0.22.0",
     "kokoro>=0.9.4",
@@ -21,13 +22,14 @@ dependencies = [
     "torch>=2.5.0",
     "transformers>=4.48.0",
     "uvicorn[standard]>=0.34.0",
-    "pipecat-ai[deepgram,local,silero]>=0.0.80",
+    "pipecat-ai[deepgram,local,runner,silero,webrtc]>=0.0.80",
 ]
 
 [project.scripts]
 postop-ingest = "knowledge.cli.ingest:main"
 postop-admin = "api.main:main"
 postop-voice = "voice.main:main"
+postop-voice-web = "voice.web_server:main"
 
 [dependency-groups]
 dev = [

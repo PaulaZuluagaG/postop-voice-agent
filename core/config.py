@@ -64,6 +64,14 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
+    # Voice web (Pipecat WebRTC + frontend María)
+    voice_web_host: str = "0.0.0.0"
+    voice_web_port: int = 7860
+    voice_web_cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
     # Dataset
     textos_dir: Path = Path("dataset/textos")
 

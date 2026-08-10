@@ -25,7 +25,7 @@ from pipecat.services.settings import LLMSettings
 
 from agent.orchestrator import ConversationOrchestrator
 from core.config import Settings, get_settings
-from core.exceptions import SessionError
+from core.exceptions import LLMCancelledError, LLMError, SessionError
 from voice.frames import PostOpUserTurnFrame
 
 
@@ -66,6 +66,8 @@ class PostOpLLMService(LLMService):
         self._call_id = call_id
         self._cancel_event = asyncio.Event()
         self._active_task: asyncio.Task[None] | None = None
+        self._turn_lock = asyncio.Lock()
+        self._last_processed_message: str | None = None
         self._opening_sent = False
         self._opening_ready = asyncio.Event()
         self._opening_failed = asyncio.Event()
@@ -147,18 +149,46 @@ class PostOpLLMService(LLMService):
             await self.push_frame(frame, direction)
             return
 
-        stream = self._orchestrator.stream_turn_response(
-            self._call_id,
-            patient_message,
-            cancel_event=self._cancel_event,
-        )
-        try:
-            await self._stream_response(stream)
-        except SessionError as exc:
-            logger.info("Turno ignorado: {}", exc)
-            if self._orchestrator.get_session(self._call_id).call_closed:
-                await self._finalize_call()
+        if patient_message == self._last_processed_message:
+            logger.debug("Turno ignorado: mensaje duplicado del paciente.")
             return
+
+        if self._active_task and not self._active_task.done():
+            logger.debug("Turno ignorado: generación LLM en curso.")
+            return
+
+        async with self._turn_lock:
+            if patient_message == self._last_processed_message:
+                logger.debug("Turno ignorado: mensaje duplicado del paciente.")
+                return
+
+            # InterruptionFrame may have set this while the agent was speaking; clear
+            # before starting a fresh Groq stream for the patient's completed turn.
+            self._cancel_event = asyncio.Event()
+
+            stream = self._orchestrator.stream_turn_response(
+                self._call_id,
+                patient_message,
+                cancel_event=self._cancel_event,
+            )
+            try:
+                await self._stream_response(stream)
+            except LLMCancelledError:
+                logger.debug("Turno de voz cancelado por interrupción")
+                return
+            except LLMError as exc:
+                if self._cancel_event.is_set():
+                    logger.debug("Turno de voz abortado tras interrupción: {}", exc)
+                    return
+                logger.error("Error LLM en turno de voz: {}", exc)
+                raise
+            except SessionError as exc:
+                logger.info("Turno ignorado: {}", exc)
+                if self._orchestrator.get_session(self._call_id).call_closed:
+                    await self._finalize_call()
+                return
+
+            self._last_processed_message = patient_message
 
         await self._after_turn()
 

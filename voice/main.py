@@ -1,14 +1,20 @@
 """Punto de entrada del agente de voz Pipecat (consola)."""
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import argparse
 import asyncio
 import sys
 
-from dotenv import load_dotenv
-from loguru import logger
-from pipecat.workers.runner import WorkerRunner
+from core.ssl_certs import configure_ssl_certificates
+
+configure_ssl_certificates()
+
+from dotenv import load_dotenv  # noqa: E402
+from loguru import logger  # noqa: E402
+from pipecat.workers.runner import WorkerRunner  # noqa: E402
 
 from core.config import get_settings
 from core.exceptions import ConfigurationError, PostOpError
