@@ -7,7 +7,9 @@ requires-python = ">=3.11"
 dependencies = [
     "certifi>=2024.0.0",
     "fastapi>=0.115.0",
+    "google-generativeai>=0.8.0",
     "groq>=0.22.0",
+    "httpx>=0.28.0",
     "kokoro>=0.9.4",
     "loguru>=0.7.3",
     "numpy>=2.0.0",
@@ -27,6 +29,7 @@ dependencies = [
 
 [project.scripts]
 postop-ingest = "knowledge.cli.ingest:main"
+postop-protocols = "knowledge.cli.protocols:main"
 postop-admin = "api.main:main"
 postop-voice = "voice.main:main"
 postop-voice-web = "voice.web_server:main"
@@ -65,3 +68,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["core", "knowledge", "agent", "api", "voice"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"knowledge/protocol/general_protocol.json" = "knowledge/protocol/general_protocol.json"

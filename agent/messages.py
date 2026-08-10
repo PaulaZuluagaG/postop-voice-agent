@@ -9,8 +9,8 @@ ALERT_MESSAGE = (
 )
 
 MAX_TURNS_CLOSE_MESSAGE = (
-    "Hemos completado el seguimiento de esta llamada. Si presenta nuevos síntomas, "
-    "contacte a su equipo de salud."
+    "Gracias por su tiempo. Hemos completado el seguimiento de hoy. "
+    "Cuídese mucho y, si presenta nuevos síntomas, contacte a su equipo de salud."
 )
 
 

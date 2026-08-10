@@ -27,6 +27,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Delete and recreate the Qdrant collection before ingesting.",
     )
     parser.add_argument(
+        "--skip-protocols",
+        action="store_true",
+        help="Skip post-ingest protocol generation.",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable debug logging.",
@@ -48,7 +53,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     pipeline = IngestPipeline(settings)
-    report = pipeline.ingest_directory(textos_dir, recreate=args.recreate)
+    report = pipeline.ingest_directory(
+        textos_dir,
+        recreate=args.recreate,
+        generate_protocols=not args.skip_protocols,
+    )
 
     print("Ingestion complete")
     print(f"  Indexed documents: {report.indexed_documents}")
@@ -72,6 +81,16 @@ def main(argv: list[str] | None = None) -> int:
         for error in report.errors:
             print(f"  - {error}")
         return 1
+
+    if report.protocol_generation is not None:
+        protocol_report = report.protocol_generation
+        print(f"  Protocols generated: {len(protocol_report.procedures)}")
+        print(f"  General protocol: {protocol_report.general_protocol_path}")
+        if protocol_report.errors:
+            print(f"  Protocol errors: {len(protocol_report.errors)}")
+            for error in protocol_report.errors:
+                print(f"    - {error}")
+            return 1
 
     return 0
 

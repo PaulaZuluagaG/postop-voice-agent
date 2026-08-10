@@ -1,0 +1,166 @@
+{
+  "procedure": "appendicitis",
+  "version": "1.0",
+  "generated_at": "2026-08-10T23:35:45.385094Z",
+  "source_ids": [
+    "src_21ce22f530b67553",
+    "src_4435ca0e37ef9f56",
+    "src_547eb29ec3e9853d",
+    "src_682102ef98a79166",
+    "src_69feacc2fe4ffc6e",
+    "src_916a5e1fd1f6b274",
+    "src_cfe069261f3441f8",
+    "src_e90004b51b62bc30",
+    "src_ef0690bc2d39256b",
+    "src_fae3b7f81bc44d28"
+  ],
+  "symptoms": [
+    {
+      "id": "fiebre",
+      "question": "¿Ha tenido fiebre o cuál ha sido su temperatura corporal?",
+      "type": "numeric",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 37.4,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 37.5,
+          "max": 38.2,
+          "points": 4,
+          "label": "amarillo"
+        },
+        {
+          "min": 38.3,
+          "max": 42.0,
+          "points": 10,
+          "label": "rojo"
+        }
+      ],
+      "fuentes": [
+        "src_21ce22f530b67553",
+        "src_547eb29ec3e9853d",
+        "src_69feacc2fe4ffc6e"
+      ]
+    },
+    {
+      "id": "dolor_abdominal",
+      "question": "¿Cómo califica la intensidad de su dolor abdominal en una escala de 0 a 10?",
+      "type": "numeric",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 3.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 4.0,
+          "max": 7.0,
+          "points": 4,
+          "label": "amarillo"
+        },
+        {
+          "min": 8.0,
+          "max": 10.0,
+          "points": 10,
+          "label": "rojo"
+        }
+      ],
+      "fuentes": [
+        "src_21ce22f530b67553",
+        "src_547eb29ec3e9853d",
+        "src_69feacc2fe4ffc6e"
+      ]
+    },
+    {
+      "id": "vomitos_episodios",
+      "question": "¿Cuántos episodios de vómito ha presentado en las últimas 24 horas?",
+      "type": "numeric",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 2.0,
+          "points": 4,
+          "label": "amarillo"
+        },
+        {
+          "min": 3.0,
+          "max": 100.0,
+          "points": 10,
+          "label": "rojo"
+        }
+      ],
+      "fuentes": [
+        "src_21ce22f530b67553",
+        "src_69feacc2fe4ffc6e"
+      ]
+    },
+    {
+      "id": "complicaciones_herida",
+      "question": "¿Presenta enrojecimiento, secreción con mal olor, sangrado, hinchazón o apertura de la herida quirúrgica?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 10,
+          "label": "rojo"
+        }
+      ],
+      "fuentes": [
+        "src_547eb29ec3e9853d",
+        "src_69feacc2fe4ffc6e"
+      ]
+    },
+    {
+      "id": "intolerancia_oral",
+      "question": "¿Presenta incapacidad o dificultad para tolerar la dieta y los líquidos por vía oral?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 8,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_21ce22f530b67553"
+      ]
+    }
+  ],
+  "thresholds": {
+    "verde": 0,
+    "amarillo": 8,
+    "rojo": 15
+  },
+  "alert_signs": [
+    "Fiebre persistente o igual/superior a 38 °C (101 °F) o presencia de escalofríos",
+    "Reaparición o aumento progresivo del dolor abdominal no aliviado por analgesia",
+    "Vómitos persistentes o incapacidad para tolerar la vía oral",
+    "Signos de infección en la herida (eritema > 2 cm, drenaje purulento/maloliente, sangrado o edema)",
+    "Dehiscencia o apertura de los bordes de la herida quirúrgica",
+    "Signos de irritación peritoneal, hipotensión o taquicardia"
+  ]
+}

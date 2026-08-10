@@ -1,4 +1,4 @@
-"""Groq client for structured turn outputs and document validation."""
+"""Groq client for structured agent turn outputs."""
 
 from __future__ import annotations
 
@@ -11,25 +11,18 @@ from typing import Any
 from groq import Groq
 
 from agent.llm.payload_normalizer import normalize_llm_turn_payload
-from agent.llm.prompts import (
-    DOCUMENT_VALIDATION_SYSTEM_PROMPT,
-    SYSTEM_PROMPT,
-    build_document_validation_prompt,
-    build_opening_user_prompt,
-    build_user_prompt,
-)
+from agent.llm.prompts import SYSTEM_PROMPT, build_opening_user_prompt, build_user_prompt
 from core.config import Settings, get_settings
 from core.exceptions import LLMError
-from core.groq_limiter import groq_call_slot
-from core.models import ClinicalAxis, LLMTurnOutput, ProcedureScenario, RetrievedChunk
+from core.groq_limiter import agent_groq_call_slot
+from core.models import ClinicalAxis, LLMTurnOutput, RetrievedChunk
 from core.retry import with_groq_retry
-from core.scenarios import scenario_label
 
 logger = logging.getLogger(__name__)
 
 
 class GroqClient:
-    """Thin wrapper around Groq for structured turn outputs and ingest validation."""
+    """Thin wrapper around Groq for structured agent turn outputs."""
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
@@ -50,6 +43,7 @@ class GroqClient:
         turno: int,
         max_turnos: int,
         conversation_history: str,
+        accumulated_facts: str,
         retrieved_chunks: list[RetrievedChunk],
         reference_date: date | None = None,
     ) -> LLMTurnOutput:
@@ -65,6 +59,7 @@ class GroqClient:
             turno=turno,
             max_turnos=max_turnos,
             historial=conversation_history,
+            hechos_acumulados=accumulated_facts,
             patient_text=patient_message,
             evidence_block=evidence_block,
             reference_date=ref.isoformat(),
@@ -109,54 +104,12 @@ class GroqClient:
         except Exception as exc:  # noqa: BLE001
             raise LLMError(f"Groq opening generation failed: {exc}") from exc
 
-    def validate_document_category(
-        self,
-        *,
-        document_excerpt: str,
-        procedure_scenario: ProcedureScenario,
-    ) -> tuple[bool, str]:
-        """Return whether the PDF topic matches the selected surgery category."""
-        category_label = scenario_label(procedure_scenario)
-        user_prompt = build_document_validation_prompt(
-            document_excerpt=document_excerpt,
-            category_label=category_label,
-        )
-
-        def _call() -> tuple[bool, str]:
-            with groq_call_slot():
-                response = self._client.chat.completions.create(
-                    model=self._settings.groq_model,
-                    messages=[
-                        {"role": "system", "content": DOCUMENT_VALIDATION_SYSTEM_PROMPT},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    temperature=0.0,
-                    max_tokens=256,
-                    response_format={"type": "json_object"},
-                )
-            raw_text = response.choices[0].message.content or ""
-            payload = self._parse_json(raw_text)
-            coincide = bool(payload.get("coincide"))
-            motivo = str(payload.get("motivo", "")).strip()
-            if coincide:
-                return True, motivo
-            tema = str(payload.get("tema_detectado", "")).strip()
-            detail = motivo or f"El documento parece tratar sobre {tema or 'otro tema'}."
-            return False, (
-                f"El documento no coincide con la categoría '{category_label}'. {detail}"
-            )
-
-        try:
-            return with_groq_retry(_call, operation_name="groq_validate_document")
-        except Exception as exc:  # noqa: BLE001
-            raise LLMError(f"Groq document validation failed: {exc}") from exc
-
     def _generate_structured(
         self,
         user_prompt: str,
         retrieved_chunks: list[RetrievedChunk],
     ) -> LLMTurnOutput:
-        with groq_call_slot():
+        with agent_groq_call_slot():
             response = self._client.chat.completions.create(
                 model=self._settings.groq_model,
                 messages=[

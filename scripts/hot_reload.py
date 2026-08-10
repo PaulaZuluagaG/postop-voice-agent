@@ -7,7 +7,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from agent.llm.groq_client import GroqClient
+from agent.llm.document_validator import DocumentValidator
 from core.config import get_settings
 from core.exceptions import LLMError, PostOpError
 from core.models import ProcedureScenario
@@ -86,8 +86,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
-        llm = GroqClient(settings)
-        matches, message = llm.validate_document_category(
+        validator = DocumentValidator(settings)
+        matches, message = validator.validate_document_category(
             document_excerpt=excerpt,
             procedure_scenario=scenario,
         )

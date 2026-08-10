@@ -48,6 +48,8 @@ class ContextualRetriever:
         procedure_scenario: ProcedureScenario,
         postop_day: int,
         conversation_context: str = "",
+        top_k: int | None = None,
+        score_threshold: float | None = None,
     ) -> tuple[str, list[RetrievedChunk], float]:
         start = time.perf_counter()
         query = self.build_enriched_query(
@@ -60,6 +62,8 @@ class ContextualRetriever:
         hits = self._store.search(
             query_vector,
             procedure_scenario=procedure_scenario.value,
+            top_k=top_k,
+            score_threshold=score_threshold,
         )
         retrieved = [RetrievedChunk(**chunk.model_dump(), score=score) for chunk, score in hits]
         elapsed_ms = (time.perf_counter() - start) * 1000

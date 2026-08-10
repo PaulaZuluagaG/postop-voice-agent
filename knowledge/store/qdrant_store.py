@@ -232,6 +232,62 @@ class QdrantVectorStore:
 
         return self._run("list_sources", _scroll)
 
+    def list_indexed_scenarios(self) -> list[ProcedureScenario]:
+        def _scroll() -> list[ProcedureScenario]:
+            scenarios: set[ProcedureScenario] = set()
+            offset = None
+            while True:
+                points, offset = self._client.scroll(
+                    collection_name=self.collection_name,
+                    limit=256,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                for point in points:
+                    payload = point.payload or {}
+                    raw = payload.get("procedure_scenario")
+                    if not raw:
+                        continue
+                    scenarios.add(ProcedureScenario(str(raw)))
+                if offset is None:
+                    break
+            return sorted(scenarios, key=lambda item: item.value)
+
+        return self._run("list_indexed_scenarios", _scroll)
+
+    def set_protocol_payload(
+        self,
+        procedure_scenario: ProcedureScenario,
+        protocol: dict[str, Any],
+    ) -> int:
+        def _set_payload() -> int:
+            scenario_filter = qmodels.Filter(
+                must=[
+                    qmodels.FieldCondition(
+                        key="procedure_scenario",
+                        match=qmodels.MatchValue(value=procedure_scenario.value),
+                    )
+                ]
+            )
+            self._client.set_payload(
+                collection_name=self.collection_name,
+                payload={"protocol": protocol},
+                points=scenario_filter,
+                wait=True,
+            )
+            return self._count_points(scenario_filter)
+
+        return self._run("set_protocol_payload", _set_payload)
+
+    def _count_points(self, scenario_filter: qmodels.Filter) -> int:
+        result = self._client.count(
+            collection_name=self.collection_name,
+            count_filter=scenario_filter,
+            exact=True,
+        )
+        return int(result.count)
+
     def get_indexed_hashes(self) -> set[str]:
         hashes: set[str] = set()
         offset = None

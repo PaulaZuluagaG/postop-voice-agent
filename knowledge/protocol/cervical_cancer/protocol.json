@@ -1,0 +1,139 @@
+{
+  "procedure": "cervical_cancer",
+  "version": "1.0",
+  "generated_at": "2026-08-10T23:36:13.726289Z",
+  "source_ids": [
+    "src_3567032085bcbf0b",
+    "src_97fc5573dd4407cc",
+    "src_9e3ab31ed4d8733b",
+    "src_d6d5fc5dc5a4f531",
+    "src_dbe27ab5ecc04fed",
+    "src_e9471c40a03e9da9",
+    "src_ef65cfd4d6d4f2c0"
+  ],
+  "symptoms": [
+    {
+      "id": "complicaciones_tratamiento",
+      "question": "¿Ha presentado alguna complicación o síntoma de sospecha de recurrencia tras la cirugía?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 15,
+          "label": "rojo"
+        }
+      ],
+      "fuentes": [
+        "src_ef65cfd4d6d4f2c0",
+        "src_e9471c40a03e9da9"
+      ]
+    },
+    {
+      "id": "disfuncion_sexual",
+      "question": "¿Ha experimentado molestias, dolor o alteraciones significativas en su función sexual tras la intervención?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 4,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_ef65cfd4d6d4f2c0",
+        "src_97fc5573dd4407cc"
+      ]
+    },
+    {
+      "id": "ansiedad",
+      "question": "¿Siente estados de ansiedad, preocupación excesiva o tensión nerviosa desmesurada?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 4,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_3567032085bcbf0b"
+      ]
+    },
+    {
+      "id": "depresion",
+      "question": "¿Ha presentado sentimientos persistentes de tristeza, apatía o desánimo tras el procedimiento?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 4,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_3567032085bcbf0b"
+      ]
+    },
+    {
+      "id": "sintomas_menopausicos",
+      "question": "¿Presenta síntomas postmenopáusicos intensos como sofocos, bochornos o sequedad de inicio o empeoramiento reciente?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 4,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_e9471c40a03e9da9"
+      ]
+    }
+  ],
+  "thresholds": {
+    "verde": 0,
+    "amarillo": 8,
+    "rojo": 15
+  },
+  "alert_signs": [
+    "Complicaciones graves asociadas al tratamiento quirúrgico",
+    "Signos o síntomas de recurrencia tumoral pélvica o a distancia",
+    "Morbilidad psicosexual o disfunción sexual persistente",
+    "Síntomas de ansiedad o depresión moderada a severa"
+  ]
+}
