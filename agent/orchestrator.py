@@ -24,7 +24,7 @@ from agent.decision.scoring import (
 )
 from agent.decision.turn_enrichment import enrich_llm_output, take_first_question
 from agent.llm.groq_client import GroqClient
-from agent.llm.streaming import GroqStreamingClient
+from agent.llm.streaming import GroqStreamingClient, drain_output_future
 from agent.messages import (
     ALERT_MESSAGE,
     DEFAULT_OPENING_QUESTION,
@@ -35,7 +35,7 @@ from agent.messages import (
 )
 from agent.traceability.logger import CallTraceLogger
 from core.config import Settings, get_settings
-from core.exceptions import SessionError
+from core.exceptions import LLMCancelledError, SessionError
 from core.models import (
     CallSessionState,
     CallSummary,
@@ -332,11 +332,19 @@ class ConversationOrchestrator:
         streamed_parts: list[str] = []
         async for token in stream.tokens:
             if cancel_event and cancel_event.is_set():
+                await drain_output_future(stream.output_future)
                 return
             streamed_parts.append(token)
             yield token
 
-        llm_output = await stream.output_future
+        if cancel_event and cancel_event.is_set():
+            await drain_output_future(stream.output_future)
+            return
+
+        try:
+            llm_output = await stream.output_future
+        except LLMCancelledError:
+            return
         llm_ms = (time.perf_counter() - llm_start) * 1000
 
         llm_output = enrich_llm_output(
@@ -472,11 +480,19 @@ class ConversationOrchestrator:
         streamed_parts: list[str] = []
         async for token in stream.tokens:
             if cancel_event and cancel_event.is_set():
+                await drain_output_future(stream.output_future)
                 return
             streamed_parts.append(token)
             yield token
 
-        llm_output = await stream.output_future
+        if cancel_event and cancel_event.is_set():
+            await drain_output_future(stream.output_future)
+            return
+
+        try:
+            llm_output = await stream.output_future
+        except LLMCancelledError:
+            return
         llm_ms = (time.perf_counter() - llm_start) * 1000
         opening_message = self._compose_opening(session, llm_output, has_evidence)
         session.opening_message = opening_message

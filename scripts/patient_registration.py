@@ -8,7 +8,12 @@ from datetime import date
 
 from agent.decision.intake import resolve_surgery_date
 from core.models import ProcedureScenario
-from core.scenarios import SCENARIO_OPTIONS, scenario_from_choice, scenario_label
+from core.scenarios import (
+    SCENARIO_OPTIONS,
+    resolve_procedure_selection,
+    scenario_from_choice,
+    scenario_label,
+)
 
 
 @dataclass(frozen=True)
@@ -72,6 +77,33 @@ def prompt_patient_registration(reference_date: date | None = None) -> PatientRe
         patient_id=patient_id,
         surgery_date=surgery_date,
         procedure_scenario=procedure_scenario,
+    )
+
+
+def registration_from_frontend(payload: dict[str, str]) -> PatientRegistration:
+    """Build registration from the María intake form (browser JSON)."""
+    name = payload.get("name", "").strip()
+    patient_id = payload.get("patientId", "").strip()
+    surgery_date = payload.get("surgeryDate", "").strip()
+    procedure = payload.get("procedure", "").strip()
+    missing = [
+        label
+        for label, value in (
+            ("name", name),
+            ("patientId", patient_id),
+            ("surgeryDate", surgery_date),
+            ("procedure", procedure),
+        )
+        if not value
+    ]
+    if missing:
+        raise ValueError(f"Datos de paciente incompletos: {', '.join(missing)}")
+
+    return PatientRegistration(
+        patient_name=name,
+        patient_id=patient_id,
+        surgery_date=resolve_surgery_date(surgery_date).isoformat(),
+        procedure_scenario=resolve_procedure_selection(procedure),
     )
 
 

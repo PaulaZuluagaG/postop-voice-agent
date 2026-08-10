@@ -20,8 +20,9 @@ from agent.llm.prompts import (
 )
 from core.config import Settings, get_settings
 from core.exceptions import LLMError
+from core.groq_limiter import groq_call_slot
 from core.models import ClinicalAxis, LLMTurnOutput, ProcedureScenario, RetrievedChunk
-from core.retry import with_retry
+from core.retry import with_groq_retry
 from core.scenarios import scenario_label
 
 logger = logging.getLogger(__name__)
@@ -73,7 +74,7 @@ class GroqClient:
             return self._generate_structured(user_prompt, retrieved_chunks)
 
         try:
-            return with_retry(_call, operation_name="groq_generate_turn")
+            return with_groq_retry(_call, operation_name="groq_generate_turn")
         except Exception as exc:  # noqa: BLE001
             raise LLMError(f"Groq turn generation failed: {exc}") from exc
 
@@ -104,7 +105,7 @@ class GroqClient:
             return self._generate_structured(user_prompt, retrieved_chunks)
 
         try:
-            return with_retry(_call, operation_name="groq_generate_opening")
+            return with_groq_retry(_call, operation_name="groq_generate_opening")
         except Exception as exc:  # noqa: BLE001
             raise LLMError(f"Groq opening generation failed: {exc}") from exc
 
@@ -122,16 +123,17 @@ class GroqClient:
         )
 
         def _call() -> tuple[bool, str]:
-            response = self._client.chat.completions.create(
-                model=self._settings.groq_model,
-                messages=[
-                    {"role": "system", "content": DOCUMENT_VALIDATION_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.0,
-                max_tokens=256,
-                response_format={"type": "json_object"},
-            )
+            with groq_call_slot():
+                response = self._client.chat.completions.create(
+                    model=self._settings.groq_model,
+                    messages=[
+                        {"role": "system", "content": DOCUMENT_VALIDATION_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=0.0,
+                    max_tokens=256,
+                    response_format={"type": "json_object"},
+                )
             raw_text = response.choices[0].message.content or ""
             payload = self._parse_json(raw_text)
             coincide = bool(payload.get("coincide"))
@@ -145,7 +147,7 @@ class GroqClient:
             )
 
         try:
-            return with_retry(_call, operation_name="groq_validate_document")
+            return with_groq_retry(_call, operation_name="groq_validate_document")
         except Exception as exc:  # noqa: BLE001
             raise LLMError(f"Groq document validation failed: {exc}") from exc
 
@@ -154,16 +156,17 @@ class GroqClient:
         user_prompt: str,
         retrieved_chunks: list[RetrievedChunk],
     ) -> LLMTurnOutput:
-        response = self._client.chat.completions.create(
-            model=self._settings.groq_model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=self._settings.groq_temperature,
-            max_tokens=self._settings.groq_max_output_tokens,
-            response_format={"type": "json_object"},
-        )
+        with groq_call_slot():
+            response = self._client.chat.completions.create(
+                model=self._settings.groq_model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=self._settings.groq_temperature,
+                max_tokens=self._settings.groq_max_output_tokens,
+                response_format={"type": "json_object"},
+            )
         raw_text = response.choices[0].message.content or ""
         payload = normalize_llm_turn_payload(self._parse_json(raw_text))
         output = LLMTurnOutput.model_validate(payload)

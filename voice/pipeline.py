@@ -34,6 +34,7 @@ class VoiceSession:
     llm: PostOpLLMService
     worker: PipelineWorker
     mode: str
+    transport: object | None = None
 
 
 def create_orchestrator_and_session(
