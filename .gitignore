@@ -17,7 +17,7 @@ eggs/
 lib/
 !voice-ui/lib/
 !voice-ui/lib/**
-parts/
+lib64/
 sdist/
 var/
 wheels/

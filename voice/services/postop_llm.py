@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from uuid import UUID
 
 from loguru import logger
@@ -72,6 +72,11 @@ class PostOpLLMService(LLMService):
         self._opening_ready = asyncio.Event()
         self._opening_failed = asyncio.Event()
         self._call_ended = asyncio.Event()
+        self._pipeline_stop: Callable[[], Awaitable[None]] | None = None
+
+    def bind_pipeline_stop(self, stop_fn: Callable[[], Awaitable[None]]) -> None:
+        """Register a full-pipeline shutdown (e.g. WebRTC ``stop_when_done``)."""
+        self._pipeline_stop = stop_fn
 
     @property
     def opening_ready(self) -> asyncio.Event:
@@ -100,7 +105,7 @@ class PostOpLLMService(LLMService):
                 file=sys.stderr,
             )
             self._opening_failed.set()
-            await self.push_frame(EndFrame())
+            await self._finalize_call()
             return
         self._opening_ready.set()
 
@@ -213,7 +218,10 @@ class PostOpLLMService(LLMService):
             return
         self._call_ended.set()
         print("La llamada clínica ha finalizado. Gracias por su tiempo.\n")
-        await self.push_frame(EndFrame())
+        if self._pipeline_stop is not None:
+            await self._pipeline_stop()
+        else:
+            await self.push_frame(EndFrame())
 
     async def _stream_response(self, token_source: AsyncIterator[str]) -> None:
         self._cancel_event = asyncio.Event()
