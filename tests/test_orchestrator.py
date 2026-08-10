@@ -147,6 +147,98 @@ def test_orchestrator_accumulates_score_across_turns() -> None:
     assert second.severity == SeverityLevel.YELLOW
 
 
+def test_orchestrator_closes_call_after_max_turns() -> None:
+    from core.config import Settings
+
+    class TurnTrackingLLM:
+        def generate_turn(self, **kwargs):
+            turno = kwargs.get("turno", 1)
+            max_turnos = kwargs.get("max_turnos", 8)
+            if turno >= max_turnos:
+                return LLMTurnOutput(
+                    categoria=ResponseCategory.RESPUESTA_VALIDA,
+                    texto_paciente="Gracias por su tiempo, que esté muy bien.",
+                    pregunta=None,
+                )
+            return LLMTurnOutput(
+                categoria=ResponseCategory.RESPUESTA_VALIDA,
+                texto_paciente="Entendido.",
+                pregunta="¿Ha tenido fiebre?",
+            )
+
+    settings = Settings(max_turns_per_call=3)
+    orchestrator = ConversationOrchestrator(
+        settings=settings,
+        retriever=FakeRetriever(),
+        llm=TurnTrackingLLM(),
+    )
+    session = orchestrator.start_call(
+        procedure_scenario=ProcedureScenario.APPENDICITIS,
+        call_id=uuid4(),
+    )
+    for message in ("Bien", "Regular", "Con dolor"):
+        orchestrator.process_turn(session.call_id, message)
+
+    assert session.turn_count == 3
+    assert session.call_closed is True
+    summary = orchestrator._build_summary(session, "llm_closure")
+    assert summary.turn_count == 3
+    assert "Gracias por su tiempo" in session.turns[-1].agent_response
+
+
+def test_orchestrator_appends_farewell_when_max_turns_reached_without_closure() -> None:
+    from agent.messages import MAX_TURNS_CLOSE_MESSAGE
+    from core.config import Settings
+
+    class AlwaysQuestionLLM:
+        def generate_turn(self, **kwargs):
+            return LLMTurnOutput(
+                categoria=ResponseCategory.RESPUESTA_VALIDA,
+                texto_paciente="Entendido.",
+                pregunta="¿Ha tenido fiebre?",
+            )
+
+    settings = Settings(max_turns_per_call=2)
+    orchestrator = ConversationOrchestrator(
+        settings=settings,
+        retriever=FakeRetriever(),
+        llm=AlwaysQuestionLLM(),
+    )
+    session = orchestrator.start_call(
+        procedure_scenario=ProcedureScenario.APPENDICITIS,
+        call_id=uuid4(),
+    )
+    orchestrator.process_turn(session.call_id, "Bien")
+    orchestrator.process_turn(session.call_id, "Regular")
+
+    assert session.call_closed is True
+    assert MAX_TURNS_CLOSE_MESSAGE in session.turns[-1].agent_response
+
+
+def test_build_user_prompt_includes_final_turn_closure_instructions() -> None:
+    from agent.llm.prompts import build_user_prompt
+
+    prompt = build_user_prompt(
+        patient_name="María",
+        procedimiento="Apendicitis",
+        dia_postop=2,
+        ejes_cubiertos=set(),
+        ejes_pendientes=[],
+        puntaje_total=0,
+        turno=8,
+        max_turnos=8,
+        historial="",
+        hechos_acumulados="(ninguno)",
+        patient_text="Estoy bien",
+        evidence_block="",
+        reference_date="2026-08-10",
+    )
+
+    assert "Cierre de llamada" in prompt
+    assert "turno final 8/8" in prompt
+    assert "`pregunta = null`" in prompt
+
+
 def test_start_call_with_registration_leaves_opening_for_begin_triage() -> None:
     session = ConversationOrchestrator(reference_date=date(2026, 8, 8)).start_call(
         patient_name="María",

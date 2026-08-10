@@ -7,7 +7,7 @@ import tempfile
 from functools import lru_cache
 from pathlib import Path
 
-from agent.llm.groq_client import GroqClient
+from agent.llm.document_validator import DocumentValidator
 from api.schemas import DocumentItem, ProcedureTypeOption
 from core.config import Settings, get_settings
 from core.exceptions import InsufficientTextError, PostOpError
@@ -31,7 +31,7 @@ class DocumentService:
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
         self._pipeline = IngestPipeline(self._settings)
-        self._llm = GroqClient(self._settings)
+        self._validator = DocumentValidator(self._settings)
 
     def list_procedure_types(self) -> list[ProcedureTypeOption]:
         options = [
@@ -68,7 +68,7 @@ class DocumentService:
             if not excerpt:
                 raise InsufficientTextError("El PDF no contiene texto suficiente para validar.")
 
-            matches, message = self._llm.validate_document_category(
+            matches, message = self._validator.validate_document_category(
                 document_excerpt=excerpt,
                 procedure_scenario=procedure_scenario,
             )

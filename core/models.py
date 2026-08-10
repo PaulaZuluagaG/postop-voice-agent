@@ -304,6 +304,7 @@ class IngestReport(BaseModel):
     skipped_no_text: list[str] = Field(default_factory=list)
     skipped_duplicates: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    protocol_generation: Any | None = None
 
 
 class TraceEvent(BaseModel):

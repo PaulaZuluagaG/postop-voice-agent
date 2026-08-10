@@ -25,6 +25,7 @@ from agent.decision.scoring import (
 from agent.decision.turn_enrichment import enrich_llm_output, take_first_question
 from agent.llm.groq_client import GroqClient
 from agent.llm.streaming import GroqStreamingClient, drain_output_future
+from agent.memory.compact_memory import build_compact_memory
 from agent.messages import (
     ALERT_MESSAGE,
     DEFAULT_OPENING_QUESTION,
@@ -177,7 +178,7 @@ class ConversationOrchestrator:
             raise SessionError("Call is already closed")
 
         turn_start = time.perf_counter()
-        conversation_context = self._build_conversation_context(session)
+        memory = build_compact_memory(session, self._settings)
         ejes_pendientes = pending_axes(session.covered_axes)
         procedimiento = scenario_label(session.procedure_scenario)
         mismatch = detect_procedure_mismatch(patient_message, session.procedure_scenario)
@@ -186,7 +187,7 @@ class ConversationOrchestrator:
             patient_message,
             procedure_scenario=session.procedure_scenario,
             postop_day=session.postop_day,
-            conversation_context=conversation_context,
+            conversation_context=memory.rag_context,
         )
 
         llm_start = time.perf_counter()
@@ -200,7 +201,8 @@ class ConversationOrchestrator:
             puntaje_total=session.cumulative_score,
             turno=session.turn_count + 1,
             max_turnos=self._settings.max_turns_per_call,
-            conversation_history=conversation_context,
+            conversation_history=memory.llm_history,
+            accumulated_facts=memory.accumulated_facts,
             retrieved_chunks=retrieved,
             reference_date=self._reference_date or date.today(),
         )
@@ -300,7 +302,7 @@ class ConversationOrchestrator:
             raise SessionError("Call is already closed")
 
         turn_start = time.perf_counter()
-        conversation_context = self._build_conversation_context(session)
+        memory = build_compact_memory(session, self._settings)
         ejes_pendientes = pending_axes(session.covered_axes)
         procedimiento = scenario_label(session.procedure_scenario)
         mismatch = detect_procedure_mismatch(patient_message, session.procedure_scenario)
@@ -309,7 +311,7 @@ class ConversationOrchestrator:
             patient_message,
             procedure_scenario=session.procedure_scenario,
             postop_day=session.postop_day,
-            conversation_context=conversation_context,
+            conversation_context=memory.rag_context,
         )
 
         llm_start = time.perf_counter()
@@ -323,7 +325,8 @@ class ConversationOrchestrator:
             puntaje_total=session.cumulative_score,
             turno=session.turn_count + 1,
             max_turnos=self._settings.max_turns_per_call,
-            conversation_history=conversation_context,
+            conversation_history=memory.llm_history,
+            accumulated_facts=memory.accumulated_facts,
             retrieved_chunks=retrieved,
             reference_date=self._reference_date or date.today(),
             cancel_event=cancel_event,
@@ -557,6 +560,7 @@ class ConversationOrchestrator:
 
     @staticmethod
     def _build_conversation_context(session: CallSessionState) -> str:
+        """Legacy full-history builder; prefer build_compact_memory()."""
         lines: list[str] = []
         if session.opening_message:
             lines.append(f"Agente: {session.opening_message}")

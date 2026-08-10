@@ -47,6 +47,24 @@ def map_folder_to_scenario(folder_name: str) -> ProcedureScenario:
     return scenario
 
 
+def list_scenarios_from_textos(textos_dir: Path) -> list[ProcedureScenario]:
+    """List procedure scenarios from subfolders in ``dataset/textos``."""
+    if not textos_dir.is_dir():
+        return []
+
+    scenarios: list[ProcedureScenario] = []
+    seen: set[ProcedureScenario] = set()
+    for path in sorted(textos_dir.iterdir(), key=lambda item: item.name.lower()):
+        if not path.is_dir() or path.name.startswith("."):
+            continue
+        scenario = FOLDER_TO_SCENARIO.get(path.name.lower())
+        if scenario is None or scenario in seen:
+            continue
+        seen.add(scenario)
+        scenarios.append(scenario)
+    return scenarios
+
+
 def scenario_label(scenario: ProcedureScenario) -> str:
     for _key, label, option in SCENARIO_OPTIONS:
         if option == scenario:

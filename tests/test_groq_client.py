@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from agent.llm.groq_client import GroqClient
 from core.config import Settings
-from core.models import LLMTurnOutput, ProcedureScenario, ResponseCategory
+from core.models import LLMTurnOutput, ResponseCategory
 
 
 def test_generate_structured_parses_json_response() -> None:
@@ -34,23 +34,3 @@ def test_generate_structured_parses_json_response() -> None:
     assert call_kwargs["temperature"] == 0.1
     assert output.categoria == ResponseCategory.RESPUESTA_VALIDA
     assert isinstance(output, LLMTurnOutput)
-
-
-def test_validate_document_category_accepts_match() -> None:
-    settings = Settings(groq_api_key="test-key")
-    client = GroqClient(settings)
-    mock_choice = MagicMock()
-    mock_choice.message.content = (
-        '{"coincide": true, "tema_detectado": "apendicitis", "motivo": "Coincide"}'
-    )
-    mock_response = MagicMock()
-    mock_response.choices = [mock_choice]
-
-    with patch.object(client._client.chat.completions, "create", return_value=mock_response):
-        matches, message = client.validate_document_category(
-            document_excerpt="Guía de apendicitis aguda",
-            procedure_scenario=ProcedureScenario.APPENDICITIS,
-        )
-
-    assert matches is True
-    assert message == "Coincide"

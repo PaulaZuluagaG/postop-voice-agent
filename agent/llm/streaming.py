@@ -13,7 +13,7 @@ from agent.llm.payload_normalizer import normalize_llm_turn_payload
 from agent.llm.prompts import SYSTEM_PROMPT, build_opening_user_prompt, build_user_prompt
 from core.config import Settings, get_settings
 from core.exceptions import LLMCancelledError, LLMError
-from core.groq_limiter import groq_call_slot
+from core.groq_limiter import agent_groq_call_slot
 from core.models import ClinicalAxis, LLMTurnOutput, RetrievedChunk
 from core.retry import with_groq_retry
 
@@ -61,6 +61,7 @@ class GroqStreamingClient:
         turno: int,
         max_turnos: int,
         conversation_history: str,
+        accumulated_facts: str,
         retrieved_chunks: list[RetrievedChunk],
         reference_date: date | None = None,
         cancel_event: asyncio.Event | None = None,
@@ -76,6 +77,7 @@ class GroqStreamingClient:
             turno=turno,
             max_turnos=max_turnos,
             historial=conversation_history,
+            hechos_acumulados=accumulated_facts,
             patient_text=patient_message,
             evidence_block=GroqClient._format_evidence(retrieved_chunks),
             reference_date=ref.isoformat(),
@@ -150,7 +152,7 @@ class GroqStreamingClient:
         cancel_event: asyncio.Event | None,
     ) -> LLMTurnOutput:
         def _call() -> LLMTurnOutput:
-            with groq_call_slot():
+            with agent_groq_call_slot():
                 extractor = JsonStringFieldExtractor("texto_paciente")
                 chunks: list[str] = []
 

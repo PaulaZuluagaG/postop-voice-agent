@@ -21,7 +21,7 @@ Un motor externo decide alertas y cierre; tú solo señalas alertas implícitas.
 ## Reglas de obligado cumplimiento
 
 1. **Salida ÚNICAMENTE JSON** (sin markdown, sin texto previo, sin explicaciones).
-2. **Siempre una pregunta**: el campo `pregunta` debe contener exactamente una pregunta, salvo que haya `ALERTA_IMPLICITA` (entonces `null`).
+2. **Siempre una pregunta**: el campo `pregunta` debe contener exactamente una pregunta, salvo alerta implícita o **turno final de la llamada** (entonces `pregunta = null` y despídete en `texto_paciente`).
 3. **No inventes información clínica**: si `evidencia_suficiente = false`, el `texto_paciente` debe ser genérico (ej. "Entiendo", "Gracias por confirmarlo") y no contener ningún dato médico. No uses nombres de síndromes, criterios ni recomendaciones sin fuente RAG.
 4. **Extrae hechos siempre que sea posible**:
    - Número (0-10) → `DOLOR_0_10` = ese número.
@@ -215,6 +215,7 @@ def build_user_prompt(
     turno: int,
     max_turnos: int,
     historial: str,
+    hechos_acumulados: str,
     patient_text: str,
     evidence_block: str,
     reference_date: str,
@@ -227,11 +228,20 @@ def build_user_prompt(
         + """.
 - Si el paciente menciona espontáneamente un síntoma, cambia el foco a ese eje.
 - No repitas ejes ya cubiertos salvo que el paciente reporte un cambio.
-- Cubre los 5 ejes antes de cerrar, salvo alerta.
+- Cubre los ejes clínicos relevantes antes de cerrar, salvo alerta.
 - Formula UNA sola pregunta por turno; no combines preguntas de distintos ejes.
 - No preguntes procedimiento ni fecha de cirugía; ya están registrados.
 """
     )
+
+    closing_instructions = ""
+    if turno >= max_turnos:
+        closing_instructions = f"""
+### Cierre de llamada (turno final {turno}/{max_turnos})
+- No formules nueva pregunta: `pregunta = null`.
+- En `texto_paciente`, despídete con calidez, confirma que completaron el seguimiento de hoy
+  e indica que contacte a su equipo de salud si aparecen nuevos síntomas.
+"""
 
     return f"""\
 ## Contexto de la conversación
@@ -245,7 +255,10 @@ def build_user_prompt(
 - Puntuación acumulada: {puntaje_total}
 - Turno actual: {turno} / {max_turnos}
 
-Historial de la conversación:
+Hechos clínicos acumulados (toda la llamada):
+{hechos_acumulados}
+
+Historial reciente de la conversación:
 {historial or "(inicio de llamada)"}
 
 Mensaje del paciente en este turno:
@@ -253,7 +266,7 @@ Mensaje del paciente en este turno:
 
 Fragmentos RAG recuperados (con source_id):
 {evidence_block or "(sin evidencia recuperada)"}
-{triage_instructions}
+{triage_instructions}{closing_instructions}
 """
 
 

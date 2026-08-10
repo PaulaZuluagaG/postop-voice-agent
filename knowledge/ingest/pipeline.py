@@ -11,6 +11,7 @@ from core.models import IngestReport, ParsedDocument, ProcedureScenario
 from knowledge.ingest.chunker import TokenChunker
 from knowledge.ingest.embedder import EmbeddingService
 from knowledge.ingest.pdf_parser import iter_pdf_files, parse_pdf
+from knowledge.protocol.generator import generate_protocols_for_indexed_procedures
 from knowledge.store.qdrant_store import QdrantVectorStore
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ class IngestPipeline:
         textos_dir: Path | None = None,
         *,
         recreate: bool = False,
+        generate_protocols: bool = True,
     ) -> IngestReport:
         textos_dir = textos_dir or self._settings.textos_dir
         report = IngestReport()
@@ -72,6 +74,22 @@ class IngestPipeline:
                 logger.exception("Failed to index %s", pdf_path)
 
         report.total_chunks = sum(source.chunk_count for source in self._store.list_sources())
+        has_indexed_data = report.indexed_documents > 0 or self._store.list_indexed_scenarios()
+        if generate_protocols and has_indexed_data:
+            report.protocol_generation = generate_protocols_for_indexed_procedures(
+                settings=self._settings,
+                store=self._store,
+            )
+        return report
+
+    def generate_protocols(self, *, force: bool = False) -> IngestReport:
+        """Generate protocols for all indexed procedures without re-ingesting PDFs."""
+        report = IngestReport()
+        report.protocol_generation = generate_protocols_for_indexed_procedures(
+            settings=self._settings,
+            store=self._store,
+            force=force,
+        )
         return report
 
     def index_document(
