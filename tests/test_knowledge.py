@@ -20,6 +20,15 @@ def test_same_content_produces_same_hash() -> None:
 
 
 def test_map_folder_to_scenario_handles_spaces() -> None:
+    assert map_folder_to_scenario("colorectal-cancer") == ProcedureScenario.COLORECTAL_CANCER
+    assert map_folder_to_scenario("other") == ProcedureScenario.OTHER
+    assert map_folder_to_scenario("cervical-cancer") == ProcedureScenario.CERVICAL_CANCER
+    assert map_folder_to_scenario("appendicitis") == ProcedureScenario.APPENDICITIS
+    assert (
+        map_folder_to_scenario("total-joint-replacement")
+        == ProcedureScenario.TOTAL_JOINT_REPLACEMENT
+    )
+    # Legacy aliases
     assert map_folder_to_scenario("colorectal cancer") == ProcedureScenario.COLORECTAL_CANCER
     assert map_folder_to_scenario("Otro") == ProcedureScenario.OTHER
     assert map_folder_to_scenario("cuello uterino") == ProcedureScenario.CERVICAL_CANCER
@@ -29,7 +38,7 @@ def test_map_folder_to_scenario_handles_spaces() -> None:
 def test_parse_pdf_skips_insufficient_text(tmp_path: Path) -> None:
     import pymupdf
 
-    scenario_dir = tmp_path / "Appendicitis"
+    scenario_dir = tmp_path / "appendicitis"
     scenario_dir.mkdir()
     target = scenario_dir / "blank.pdf"
 

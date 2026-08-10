@@ -10,7 +10,7 @@ Este documento describe **qué se implementó** en código y en el dataset para 
 |------------|--------|----------------|
 | Renombrar `breast_cancer` → `cuello uterino` | ✅ Hecho | Script + actualización de `core/scenarios.py` |
 | Reclasificar 5 PDFs | ✅ Hecho | 4 movidos a `Otro/`; 1 corregido por el renombre de carpeta |
-| OCR en 12 docs escaneados | ✅ Hecho (código) | `knowledge/ingest/pdf_ocr.py` — requiere Tesseract instalado |
+| OCR en docs escaneados | ✅ Hecho (código) | `knowledge/ingest/pdf_ocr.py` — 12 con señal; 1 crítico bajo mínimo ingest |
 | Limpiar 15 docs con alto junk | ✅ Hecho (código) | `knowledge/ingest/text_cleaner.py` — se aplica en cada ingestión |
 
 ---

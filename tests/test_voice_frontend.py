@@ -10,7 +10,7 @@ def test_registration_from_frontend_maps_folder_selection() -> None:
             "name": "Paula",
             "patientId": "PAC-001",
             "surgeryDate": "2026-08-05",
-            "procedure": "cuello uterino",
+            "procedure": "cervical-cancer",
         }
     )
     assert registration.patient_name == "Paula"
@@ -24,19 +24,19 @@ def test_registration_from_frontend_requires_all_fields() -> None:
                 "name": "Paula",
                 "patientId": "",
                 "surgeryDate": "2026-08-05",
-                "procedure": "Otro",
+                "procedure": "other",
             }
         )
 
 
-def test_list_procedure_options_includes_otro_and_disk_folders(tmp_path) -> None:
-    (tmp_path / "cuello uterino").mkdir()
-    (tmp_path / "Appendicitis").mkdir()
+def test_list_procedure_options_includes_other_and_disk_folders(tmp_path) -> None:
+    (tmp_path / "cervical-cancer").mkdir()
+    (tmp_path / "appendicitis").mkdir()
 
     options = list_procedure_options_from_disk(tmp_path)
     values = [value for value, _label in options]
 
-    assert "cuello uterino" in values
-    assert "Appendicitis" in values
-    assert "Otro" in values
-    assert values.count("Otro") == 1
+    assert "cervical-cancer" in values
+    assert "appendicitis" in values
+    assert "other" in values
+    assert values.count("other") == 1

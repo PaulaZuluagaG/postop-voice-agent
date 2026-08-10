@@ -53,18 +53,30 @@ Usamos palabras clave en el texto extraído para comparar **carpeta esperada** v
 
 ---
 
-## 4. Documentos escaneados (12 señales)
+## 4. Documentos escaneados
 
-**Qué es un PDF escaneado:** Página con imagen(s) y muy poco texto nativo (< 80 caracteres). El lector de PDF no puede “copiar” el contenido; hace falta **OCR** (reconocimiento óptico de caracteres).
+**Heurística (EDA + ingest):** página con imagen(s) y <80 caracteres de texto nativo extraíble.
 
-**Ejemplos detectados:**
+| Métrica | Valor | Significado |
+|---------|-------|-------------|
+| Con señal de escaneo | **12** | ≥1 página con imagen y poco texto nativo |
+| Crítico (bajo mínimo ingest) | **1** | No alcanza 200 chars sin OCR |
+| Impacto alto (≥2 págs. escaneadas) | **2** | Pérdida relevante de contenido |
+| Impacto bajo (solo 1 pág., usualmente portada) | **9** | El cuerpo del documento sí es extraíble |
 
-- `REVISIÓN DE LA LITERATURA...` — 1 página, 0 chars (caso crítico)
-- `Acute Appendicitis Evidence Based Medicine Guideline.pdf` — 1 página escaneada de 7
-- `Diagnóstico y tratamiento del paciente con colecistitis aguda...` — 9 páginas escaneadas de 110
-- Varios planes de cuidado y guías con portadas escaneadas
+**Importante:** los **12** no son 12 PDFs completamente escaneados. La mayoría solo tienen la portada como imagen; el RAG puede usar el resto del texto nativo.
 
-**Impacto:** Sin OCR, esos documentos aportan poco o nada al RAG. Con OCR (Tesseract + PyMuPDF), se recupera texto utilizable.
+**Casos relevantes:**
+
+| Archivo | Carpeta | Escaneo | Chars |
+|---------|---------|---------|-------|
+| `REVISIÓN DE LA LITERATURA SOBRE LAAPENDICITIS AGUDA PEDIÁTRICA...` | appendicitis | 1/1 págs. | **0** (crítico) |
+| `Diagnóstico y tratamiento del paciente con colecistitis aguda...` | cholecystitis | 9/110 págs. | alto impacto |
+| `Colon Cancer Surgery and Recovery.pdf` | colorectal-cancer | 2/24 págs. | alto impacto |
+| `Acute Appendicitis Evidence Based Medicine Guideline.pdf` | appendicitis | 1/7 págs. | portada |
+| Otros 8 PDFs | varias | 1 pág. c/u | portada |
+
+**Impacto:** Sin OCR, el único documento crítico no entra al RAG. Los de impacto alto pierden secciones; los de portada escaneada aportan casi todo su contenido.
 
 ---
 
@@ -126,7 +138,7 @@ El notebook calcula `content_hash` con el mismo algoritmo que `postop-ingest` (`
 | Volumen y cobertura | ✅ Adecuado | — |
 | Nombre de carpeta cuello uterino | ❌ Incorrecto | Alta |
 | 4 PDFs en categoría equivocada | ⚠️ Revisar | Media |
-| PDFs escaneados | ⚠️ 12 con señal | Alta |
+| PDFs escaneados | ⚠️ 12 con señal (1 crítico, 2 alto impacto) | Alta |
 | Ruido bibliográfico | ⚠️ 15 con junk alto | Media |
 | Documentos duplicados | ✅ 0 por nombre y 0 por content_hash | — |
 
