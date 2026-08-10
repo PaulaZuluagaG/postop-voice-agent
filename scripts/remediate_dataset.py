@@ -14,9 +14,8 @@ from core.scenarios import SCENARIO_FOLDER_NAMES
 logger = logging.getLogger(__name__)
 
 TEXTOS_DIR = get_settings().textos_dir.resolve()
-LEGACY_CERVICAL_FOLDER = "breast_cancer"
-CERVICAL_FOLDER = SCENARIO_FOLDER_NAMES[ProcedureScenario.CERVICAL_CANCER]
-OTHER_FOLDER = SCENARIO_FOLDER_NAMES[ProcedureScenario.OTHER]
+APPENDICITIS_FOLDER = SCENARIO_FOLDER_NAMES[ProcedureScenario.APPENDICITIS]
+CHOLECYSTITIS_FOLDER = SCENARIO_FOLDER_NAMES[ProcedureScenario.CHOLECYSTITIS]
 
 _ESTABLISHING_PDF = (
     "Establishing the need for clinical follow-up after emergency appendicectomy "
@@ -44,57 +43,62 @@ class PdfMove:
     reason: str
 
 
-# PDFs flagged by EDA as misclassified (keyword heuristic). cervical-es-patient stays
-# in cuello uterino after the folder rename — content is a cervical patient guide.
+# Reclassify former Otro documents back into their closest procedure folders.
 RECLASSIFICATIONS: tuple[PdfMove, ...] = (
     PdfMove(
-        "Appendicitis",
+        "other",
         _ESTABLISHING_PDF,
-        OTHER_FOLDER,
-        "Contenido genérico de seguimiento; no encaja en ningún escenario clínico principal.",
+        APPENDICITIS_FOLDER,
+        "Seguimiento post-apendicectomía; encaja en appendicitis.",
     ),
     PdfMove(
-        "Appendicitis",
+        "other",
         _REVISION_PDF,
-        OTHER_FOLDER,
-        "PDF escaneado sin texto extraíble; requiere OCR.",
+        APPENDICITIS_FOLDER,
+        "Revisión de literatura sobre apendicitis pediátrica.",
     ),
     PdfMove(
-        "cholecystitis",
+        "other",
         _CUIDADO_GI_PDF,
-        OTHER_FOLDER,
-        "Guía GI general, no específica de colecistitis.",
+        CHOLECYSTITIS_FOLDER,
+        "Cuidado GI postoperatorio; mejor encaje en colecistitis.",
     ),
     PdfMove(
-        "cholecystitis",
+        "other",
         _NURSING_REVIEW_PDF,
-        OTHER_FOLDER,
-        "Revisión de enfermería transversal; clasificado como Otro por el EDA.",
+        CHOLECYSTITIS_FOLDER,
+        "Revisión de cuidados post-colecistectomía.",
     ),
 )
 
+FOLDER_RENAMES: tuple[tuple[str, str], ...] = (
+    ("Appendicitis", "appendicitis"),
+    ("cuello uterino", "cervical-cancer"),
+    ("colorectal cancer", "colorectal-cancer"),
+    ("total joint replacement", "total-joint-replacement"),
+    ("Otro", "other"),
+)
 
-def rename_cervical_folder(*, dry_run: bool) -> bool:
-    source = TEXTOS_DIR / LEGACY_CERVICAL_FOLDER
-    target = TEXTOS_DIR / CERVICAL_FOLDER
-    if target.exists():
-        logger.info("Carpeta destino ya existe: %s", target)
-        return False
-    if not source.exists():
-        logger.info("Carpeta legacy no encontrada (ya renombrada): %s", source)
-        return False
-    logger.info("Renombrar %s → %s", source.name, target.name)
-    if not dry_run:
-        source.rename(target)
-    return True
+
+def rename_folders(*, dry_run: bool) -> int:
+    renamed = 0
+    for source_name, target_name in FOLDER_RENAMES:
+        source = TEXTOS_DIR / source_name
+        target = TEXTOS_DIR / target_name
+        if not source.exists():
+            continue
+        if target.exists():
+            logger.info("Carpeta destino ya existe: %s", target)
+            continue
+        logger.info("Renombrar %s → %s", source.name, target.name)
+        if not dry_run:
+            source.rename(target)
+        renamed += 1
+    return renamed
 
 
 def move_misclassified(*, dry_run: bool) -> list[PdfMove]:
     applied: list[PdfMove] = []
-    other_dir = TEXTOS_DIR / OTHER_FOLDER
-    if not dry_run:
-        other_dir.mkdir(exist_ok=True)
-
     for move in RECLASSIFICATIONS:
         source = TEXTOS_DIR / move.source_folder / move.file_name
         destination = TEXTOS_DIR / move.target_folder / move.file_name
@@ -107,6 +111,7 @@ def move_misclassified(*, dry_run: bool) -> list[PdfMove]:
             continue
         logger.info("Mover %s → %s (%s)", source.name, move.target_folder, move.reason)
         if not dry_run:
+            destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(source), str(destination))
         applied.append(move)
     return applied
@@ -114,14 +119,14 @@ def move_misclassified(*, dry_run: bool) -> list[PdfMove]:
 
 def validate_layout() -> list[str]:
     issues: list[str] = []
-    if (TEXTOS_DIR / LEGACY_CERVICAL_FOLDER).exists():
-        issues.append(f"Carpeta legacy '{LEGACY_CERVICAL_FOLDER}' aún presente.")
-    cervical = TEXTOS_DIR / CERVICAL_FOLDER
-    if not cervical.exists():
-        issues.append(f"Falta carpeta '{CERVICAL_FOLDER}'.")
-    other = TEXTOS_DIR / OTHER_FOLDER
-    if not other.exists():
-        issues.append(f"Falta carpeta '{OTHER_FOLDER}'.")
+    for _source_name, target_name in FOLDER_RENAMES:
+        if (TEXTOS_DIR / _source_name).exists():
+            issues.append(f"Carpeta legacy '{_source_name}' aún presente.")
+        if target_name != "other" and not (TEXTOS_DIR / target_name).exists():
+            issues.append(f"Falta carpeta '{target_name}'.")
+    other_dir = TEXTOS_DIR / "other"
+    if other_dir.exists() and any(other_dir.glob("*.pdf")):
+        issues.append("La carpeta 'other' aún contiene PDFs sin reclasificar.")
     for move in RECLASSIFICATIONS:
         if (TEXTOS_DIR / move.source_folder / move.file_name).exists():
             issues.append(f"PDF sin mover: {move.file_name}")
@@ -137,11 +142,11 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-    renamed = rename_cervical_folder(dry_run=args.dry_run)
     moves = move_misclassified(dry_run=args.dry_run)
+    renamed = rename_folders(dry_run=args.dry_run)
 
     if args.dry_run:
-        logger.info("Dry run: %s rename, %s moves planned.", int(renamed), len(moves))
+        logger.info("Dry run: %s renames, %s moves planned.", renamed, len(moves))
         return
 
     issues = validate_layout()
@@ -151,7 +156,7 @@ def main() -> None:
         raise SystemExit(1)
 
     logger.info(
-        "Remediación completada: carpeta renombrada=%s, PDFs movidos=%s.",
+        "Remediación completada: carpetas renombradas=%s, PDFs movidos=%s.",
         renamed,
         len(moves),
     )

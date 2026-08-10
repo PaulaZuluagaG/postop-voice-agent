@@ -131,8 +131,7 @@ conversación en sus dos capas.
 `verde`, 25 `amarillo` y 12 `rojo`.
 - `comorbilidades` y `adaptation_fields` son **listas JSON dentro de una celda de texto**.
 - Los cuatro `.xlsx` tienen **una sola hoja, llamada `result`**.
-- En `dataset/textos/`, dos nombres de carpeta contienen espacios, hay documentos
-repetidos y un PDF de `Appendicitis/` está escaneado **sin capa de texto**.
+- En `dataset/textos/`, hay **12 PDFs con señal de escaneo** (≥1 página con imagen y poco texto nativo), pero solo **1** queda bajo el mínimo de ingestión sin OCR; el resto suele ser portada escaneada.
 - El material entregado **no es todo el material de evaluación**. Habrá conocimiento
 clínico que tu agente no habrá visto antes.
 

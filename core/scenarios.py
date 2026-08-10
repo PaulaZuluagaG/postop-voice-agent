@@ -15,21 +15,28 @@ SCENARIO_OPTIONS: tuple[tuple[str, str, ProcedureScenario], ...] = (
 )
 
 SCENARIO_FOLDER_NAMES: dict[ProcedureScenario, str] = {
-    ProcedureScenario.APPENDICITIS: "Appendicitis",
+    ProcedureScenario.APPENDICITIS: "appendicitis",
     ProcedureScenario.CHOLECYSTITIS: "cholecystitis",
-    ProcedureScenario.CERVICAL_CANCER: "cuello uterino",
-    ProcedureScenario.COLORECTAL_CANCER: "colorectal cancer",
-    ProcedureScenario.TOTAL_JOINT_REPLACEMENT: "total joint replacement",
-    ProcedureScenario.OTHER: "Otro",
+    ProcedureScenario.CERVICAL_CANCER: "cervical-cancer",
+    ProcedureScenario.COLORECTAL_CANCER: "colorectal-cancer",
+    ProcedureScenario.TOTAL_JOINT_REPLACEMENT: "total-joint-replacement",
+    ProcedureScenario.OTHER: "other",
 }
 
 FOLDER_TO_SCENARIO: dict[str, ProcedureScenario] = {
     folder.lower(): scenario for scenario, folder in SCENARIO_FOLDER_NAMES.items()
 }
-# Legacy folder name kept for backwards compatibility after EDA remediation.
-FOLDER_TO_SCENARIO["breast_cancer"] = ProcedureScenario.CERVICAL_CANCER
+# Legacy folder names kept for backwards compatibility after dataset remediation.
+_LEGACY_FOLDER_ALIASES: dict[str, ProcedureScenario] = {
+    "breast_cancer": ProcedureScenario.CERVICAL_CANCER,
+    "cuello uterino": ProcedureScenario.CERVICAL_CANCER,
+    "colorectal cancer": ProcedureScenario.COLORECTAL_CANCER,
+    "total joint replacement": ProcedureScenario.TOTAL_JOINT_REPLACEMENT,
+    "otro": ProcedureScenario.OTHER,
+}
+FOLDER_TO_SCENARIO.update(_LEGACY_FOLDER_ALIASES)
 
-OTHER_OPTION_VALUE = "Otro"
+OTHER_OPTION_VALUE = "other"
 OTHER_OPTION_LABEL = "Otro"
 
 
@@ -58,10 +65,10 @@ def folder_display_label(folder_name: str) -> str:
 
 
 def list_procedure_options_from_disk(textos_dir: Path) -> list[tuple[str, str]]:
-    """List dropdown options from folders in ``textos_dir``, always including Otro.
+    """List dropdown options from folders in ``textos_dir``, always including other.
 
     Returns ``(value, label)`` pairs. ``value`` is the folder name on disk
-    (or ``Otro``). New folders appear automatically the next time this is called.
+    (or ``other``). New folders appear automatically the next time this is called.
     """
     options: list[tuple[str, str]] = []
     has_otro = False
