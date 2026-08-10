@@ -173,6 +173,7 @@ def build_voice_pipeline(
         ),
         idle_timeout_secs=settings.voice_pipeline_idle_timeout_secs,
     )
+    llm.bind_pipeline_stop(worker.stop_when_done)
 
     return VoiceSession(
         orchestrator=orchestrator,
