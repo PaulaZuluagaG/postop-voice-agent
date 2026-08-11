@@ -14,8 +14,9 @@ from agent.llm.prompts import SYSTEM_PROMPT, build_opening_user_prompt, build_us
 from core.config import Settings, get_settings
 from core.exceptions import LLMCancelledError, LLMError
 from core.groq_limiter import agent_groq_call_slot
-from core.models import ClinicalAxis, LLMTurnOutput, RetrievedChunk
+from core.models import LLMTurnOutput, RetrievedChunk
 from core.retry import with_groq_retry
+from knowledge.protocol.models import SymptomDefinition
 
 
 @dataclass
@@ -55,8 +56,9 @@ class GroqStreamingClient:
         patient_name: str,
         procedimiento: str,
         dia_postop: int,
-        ejes_cubiertos: set[ClinicalAxis],
-        ejes_pendientes: list[ClinicalAxis],
+        covered_symptom_ids: set[str],
+        pending_symptoms: list[SymptomDefinition],
+        alert_signs: list[str],
         puntaje_total: int,
         turno: int,
         max_turnos: int,
@@ -64,6 +66,7 @@ class GroqStreamingClient:
         accumulated_facts: str,
         retrieved_chunks: list[RetrievedChunk],
         reference_date: date | None = None,
+        current_focal_symptom: str | None = None,
         cancel_event: asyncio.Event | None = None,
     ) -> GroqStreamHandle:
         ref = reference_date or date.today()
@@ -71,8 +74,9 @@ class GroqStreamingClient:
             patient_name=patient_name,
             procedimiento=procedimiento,
             dia_postop=dia_postop,
-            ejes_cubiertos=ejes_cubiertos,
-            ejes_pendientes=ejes_pendientes,
+            covered_symptom_ids=covered_symptom_ids,
+            pending_symptoms=pending_symptoms,
+            alert_signs=alert_signs,
             puntaje_total=puntaje_total,
             turno=turno,
             max_turnos=max_turnos,
@@ -81,6 +85,7 @@ class GroqStreamingClient:
             patient_text=patient_message,
             evidence_block=GroqClient._format_evidence(retrieved_chunks),
             reference_date=ref.isoformat(),
+            current_focal_symptom=current_focal_symptom,
         )
         return self._stream_structured(user_prompt, retrieved_chunks, cancel_event=cancel_event)
 
@@ -90,8 +95,10 @@ class GroqStreamingClient:
         patient_name: str,
         procedimiento: str,
         dia_postop: int,
-        ejes_pendientes: list[ClinicalAxis],
+        pending_symptoms: list[SymptomDefinition],
+        alert_signs: list[str],
         has_procedure_evidence: bool,
+        uses_general_protocol: bool,
         retrieved_chunks: list[RetrievedChunk],
         reference_date: date | None = None,
         cancel_event: asyncio.Event | None = None,
@@ -101,8 +108,10 @@ class GroqStreamingClient:
             patient_name=patient_name,
             procedimiento=procedimiento,
             dia_postop=dia_postop,
-            ejes_pendientes=ejes_pendientes,
+            pending_symptoms=pending_symptoms,
+            alert_signs=alert_signs,
             has_procedure_evidence=has_procedure_evidence,
+            uses_general_protocol=uses_general_protocol,
             evidence_block=GroqClient._format_evidence(retrieved_chunks),
             reference_date=ref.isoformat(),
         )

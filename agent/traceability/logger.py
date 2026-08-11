@@ -34,16 +34,22 @@ class CallTraceLogger:
         self,
         call_id: UUID,
         *,
+        procedure_id: str,
         procedure_scenario: str,
         postop_day: int,
         patient_name: str | None = None,
         patient_id: str | None = None,
         procedure_name: str | None = None,
         surgery_date: str | None = None,
+        protocol_used: str | None = None,
+        custom_procedure: str | None = None,
+        uses_general_protocol: bool = False,
     ) -> None:
-        payload: dict[str, str | int] = {
+        payload: dict[str, str | int | bool] = {
+            "procedure_id": procedure_id,
             "procedure_scenario": procedure_scenario,
             "postop_day": postop_day,
+            "uses_general_protocol": uses_general_protocol,
         }
         if patient_name:
             payload["patient_name"] = patient_name
@@ -53,6 +59,10 @@ class CallTraceLogger:
             payload["procedure_name"] = procedure_name
         if surgery_date:
             payload["surgery_date"] = surgery_date
+        if protocol_used:
+            payload["protocol_used"] = protocol_used
+        if custom_procedure:
+            payload["custom_procedure"] = custom_procedure
         self.log_event(call_id, "call_start", payload)
 
     def log_turn(self, call_id: UUID, turn: TurnRecord) -> None:

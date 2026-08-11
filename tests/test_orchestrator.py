@@ -17,7 +17,9 @@ from knowledge.retrieval.retriever import ContextualRetriever
 
 
 class FakeRetriever(ContextualRetriever):
-    def retrieve(self, patient_message, *, procedure_scenario, postop_day, conversation_context=""):
+    def retrieve(
+        self, patient_message, *, procedure_id, postop_day, conversation_context="", **kwargs
+    ):
         chunk = RetrievedChunk(
             chunk_id="chunk-1",
             source_id="src_test",
@@ -26,7 +28,8 @@ class FakeRetriever(ContextualRetriever):
             chunk_index=0,
             page_start=1,
             page_end=1,
-            procedure_scenario=procedure_scenario,
+            procedure_id=procedure_id,
+            procedure_scenario=ProcedureScenario.APPENDICITIS,
             document_type=DocumentType.GUIDE,
             language="es",
             file_name="guia.pdf",
@@ -61,7 +64,7 @@ class FakeLLM:
         )
 
 
-class AlertLLM:
+class AlertLLM(FakeLLM):
     def generate_turn(self, **kwargs):
         return LLMTurnOutput(
             categoria=ResponseCategory.ALERTA_IMPLICITA,
@@ -122,11 +125,13 @@ def test_orchestrator_accumulates_score_across_turns() -> None:
 
         def generate_turn(self, **kwargs):
             self._calls += 1
-            pain = 6.0 if self._calls == 1 else 8.0
+            pain = 6.0 if self._calls == 1 else 7.0
             return LLMTurnOutput(
                 categoria=ResponseCategory.RESPUESTA_VALIDA,
                 foco=ClinicalAxis.DOLOR,
+                foco_sintoma="dolor_abdominal",
                 hechos=ClinicalFacts(dolor_0_10=pain),
+                sintomas={"dolor_abdominal": pain},
                 texto_paciente="Gracias por la información.",
                 pregunta="¿Ha tenido fiebre?",
             )
@@ -134,16 +139,18 @@ def test_orchestrator_accumulates_score_across_turns() -> None:
     orchestrator = ConversationOrchestrator(
         retriever=FakeRetriever(),
         llm=HighPainLLM(),
+        reference_date=date(2026, 8, 10),
     )
     session = orchestrator.start_call(
-        procedure_scenario=ProcedureScenario.CERVICAL_CANCER,
+        procedure_scenario=ProcedureScenario.APPENDICITIS,
+        surgery_date="2026-08-07",
         call_id=uuid4(),
     )
     first = orchestrator.process_turn(session.call_id, "Me duele un poco")
     second = orchestrator.process_turn(session.call_id, "Ahora me duele mucho más")
-    assert first.turn_score == 4
-    assert second.turn_score == 10
-    assert second.cumulative_score == 14
+    assert first.base_score == 4
+    assert second.base_score == 4
+    assert second.cumulative_score == 8
     assert second.severity == SeverityLevel.YELLOW
 
 
@@ -222,8 +229,9 @@ def test_build_user_prompt_includes_final_turn_closure_instructions() -> None:
         patient_name="María",
         procedimiento="Apendicitis",
         dia_postop=2,
-        ejes_cubiertos=set(),
-        ejes_pendientes=[],
+        covered_symptom_ids=set(),
+        pending_symptoms=[],
+        alert_signs=[],
         puntaje_total=0,
         turno=8,
         max_turnos=8,
@@ -271,7 +279,7 @@ def test_begin_triage_without_procedure_evidence() -> None:
     assert "No tengo información específica sobre Apendicitis" in opening
     assert "triaje general" in opening.lower()
     assert opening.count("?") == 1
-    assert "Del 0 al 10" in opening
+    assert "dolor" in opening.lower()
 
 
 def test_begin_triage_with_procedure_evidence() -> None:

@@ -6,6 +6,8 @@ const TOKEN_KEY = "postop_admin_token";
 let docs = [];
 /** @type {{source_id: string, procedure_type: string} | null} */
 let confirmTarget = null;
+/** @type {{temp_id: string, file_name: string} | null} */
+let pendingProcedureUpload = null;
 let loadingDocs = false;
 let uploading = false;
 
@@ -25,6 +27,11 @@ const confirmDialog = document.getElementById("confirm-dialog");
 const confirmMessage = document.getElementById("confirm-message");
 const confirmCancel = document.getElementById("confirm-cancel");
 const confirmDelete = document.getElementById("confirm-delete");
+const procedureDialog = document.getElementById("procedure-dialog");
+const suggestedProcedure = document.getElementById("suggested-procedure");
+const manualProcedure = document.getElementById("manual-procedure");
+const procedureCancel = document.getElementById("procedure-cancel");
+const procedureConfirm = document.getElementById("procedure-confirm");
 const toastArea = document.getElementById("toast-area");
 
 function getToken() {
@@ -41,7 +48,6 @@ function authHeaders() {
 }
 
 function pushToast(kind, message) {
-  const id = Date.now() + Math.random();
   const toast = document.createElement("div");
   toast.role = "status";
   toast.className =
@@ -175,6 +181,23 @@ function closeConfirm() {
   confirmDialog.classList.remove("flex");
 }
 
+function openProcedureDialog(suggestion) {
+  suggestedProcedure.textContent = suggestion.suggested_procedure;
+  manualProcedure.value = suggestion.suggested_procedure;
+  pendingProcedureUpload = {
+    temp_id: suggestion.temp_id,
+    file_name: docFile.files[0].name,
+  };
+  procedureDialog.classList.remove("hidden");
+  procedureDialog.classList.add("flex");
+}
+
+function closeProcedureDialog() {
+  pendingProcedureUpload = null;
+  procedureDialog.classList.add("hidden");
+  procedureDialog.classList.remove("flex");
+}
+
 async function deleteDocument() {
   if (!confirmTarget) return;
   const target = confirmTarget;
@@ -192,6 +215,41 @@ async function deleteDocument() {
   }
 }
 
+async function confirmProcedureUpload() {
+  if (!pendingProcedureUpload) return;
+  const procedureId = manualProcedure.value.trim();
+  if (!procedureId) {
+    pushToast("error", "Debes indicar un procedure definitivo.");
+    return;
+  }
+
+  uploading = true;
+  updateUploadState();
+
+  const body = new FormData();
+  body.append("temp_id", pendingProcedureUpload.temp_id);
+  body.append("procedure_id", procedureId);
+  body.append("file_name", pendingProcedureUpload.file_name);
+
+  try {
+    const created = await apiFetch("/admin/documents/confirm", { method: "POST", body });
+    docs = [...docs.filter((item) => item.source_id !== created.source_id), created].sort((a, b) =>
+      a.source_id.localeCompare(b.source_id),
+    );
+    renderDocs();
+    docFile.value = "";
+    docType.value = "";
+    closeProcedureDialog();
+    pushToast("success", `Documento indexado bajo ${procedureId}.`);
+    await loadProcedureTypes();
+  } catch (error) {
+    pushToast("error", error.message);
+  } finally {
+    uploading = false;
+    updateUploadState();
+  }
+}
+
 async function uploadDocument() {
   const file = docFile.files && docFile.files[0];
   if (!file || !docType.value || uploading) return;
@@ -199,11 +257,18 @@ async function uploadDocument() {
   uploading = true;
   updateUploadState();
 
-  const body = new FormData();
-  body.append("file", file);
-  body.append("procedure_type", docType.value);
-
   try {
+    if (docType.value === "other") {
+      const body = new FormData();
+      body.append("file", file);
+      const suggestion = await apiFetch("/admin/documents/analyze", { method: "POST", body });
+      openProcedureDialog(suggestion);
+      return;
+    }
+
+    const body = new FormData();
+    body.append("file", file);
+    body.append("procedure_type", docType.value);
     const created = await apiFetch("/admin/documents", { method: "POST", body });
     docs = [...docs.filter((item) => item.source_id !== created.source_id), created].sort((a, b) =>
       a.source_id.localeCompare(b.source_id),
@@ -211,7 +276,8 @@ async function uploadDocument() {
     renderDocs();
     docFile.value = "";
     docType.value = "";
-    pushToast("success", "Documento agregado a la base de conocimiento.");
+    pushToast("success", "Documento agregado y protocolo regenerado.");
+    await loadProcedureTypes();
   } catch (error) {
     pushToast("error", error.message);
   } finally {
@@ -243,8 +309,13 @@ docType.addEventListener("change", updateUploadState);
 uploadBtn.addEventListener("click", uploadDocument);
 confirmCancel.addEventListener("click", closeConfirm);
 confirmDelete.addEventListener("click", deleteDocument);
+procedureCancel.addEventListener("click", closeProcedureDialog);
+procedureConfirm.addEventListener("click", confirmProcedureUpload);
 confirmDialog.addEventListener("click", (event) => {
   if (event.target === confirmDialog) closeConfirm();
+});
+procedureDialog.addEventListener("click", (event) => {
+  if (event.target === procedureDialog) closeProcedureDialog();
 });
 
 const savedToken = getToken();

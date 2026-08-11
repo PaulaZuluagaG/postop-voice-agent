@@ -74,6 +74,7 @@ class TokenChunker:
                     chunk_index=chunk_index,
                     page_start=page_start,
                     page_end=page_end,
+                    procedure_id=document.procedure_id,
                     procedure_scenario=document.procedure_scenario,
                     document_type=document.document_type,
                     language=document.language,

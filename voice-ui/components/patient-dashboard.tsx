@@ -26,9 +26,15 @@ function procedureLabel(patient: PatientData) {
   return patient.procedureLabel || patient.procedure
 }
 
-export function PatientDashboard({ patient }: { patient: PatientData }) {
+export function PatientDashboard({
+  patient,
+  onCallEnded,
+}: {
+  patient: PatientData
+  onCallEnded?: () => void
+}) {
   const { inCall, connecting, speaker, messages, error, startCall, endCall } =
-    useVoiceSession(patient)
+    useVoiceSession(patient, onCallEnded)
 
   const day = postopDay(patient.surgeryDate)
   const active = inCall || connecting

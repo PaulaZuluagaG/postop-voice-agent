@@ -1,5 +1,4 @@
 from datetime import date
-from uuid import uuid4
 
 from agent.decision.turn_enrichment import (
     enrich_llm_output,
@@ -9,7 +8,6 @@ from agent.decision.turn_enrichment import (
 )
 from agent.orchestrator import ConversationOrchestrator
 from core.models import (
-    CallSessionState,
     ClinicalAxis,
     ClinicalFacts,
     LLMTurnOutput,
@@ -18,6 +16,7 @@ from core.models import (
     TurnRecord,
     YesNo,
 )
+from tests.conftest import make_session
 
 
 def test_parse_numeric_pain_response() -> None:
@@ -32,11 +31,8 @@ def test_take_first_question_keeps_only_one() -> None:
 
 
 def test_enrich_llm_output_fills_pain_when_agent_asked_scale() -> None:
-    session = CallSessionState(
-        call_id=uuid4(),
-        procedure_scenario=ProcedureScenario.APPENDICITIS,
-        postop_day=2,
-    )
+    session = make_session()
+    session.current_focal_symptom = "dolor_abdominal"
     session.turns.append(
         TurnRecord(
             turn_number=1,
@@ -69,11 +65,8 @@ def test_parse_yes_no_response() -> None:
 
 
 def test_enrich_llm_output_fills_disnea_when_agent_asked_breathing() -> None:
-    session = CallSessionState(
-        call_id=uuid4(),
-        procedure_scenario=ProcedureScenario.APPENDICITIS,
-        postop_day=2,
-    )
+    session = make_session()
+    session.current_focal_symptom = "respiracion"
     session.turns.append(
         TurnRecord(
             turn_number=1,
@@ -92,16 +85,12 @@ def test_enrich_llm_output_fills_disnea_when_agent_asked_breathing() -> None:
 
     enriched = enrich_llm_output(session, "no", llm_output, reference_date=date(2026, 8, 8))
 
-    assert enriched.hechos.disnea == YesNo.NO
-    assert enriched.foco == ClinicalAxis.RESPIRACION
+    assert enriched.sintomas.get("respiracion") == "no"
 
 
 def test_enrich_llm_output_fills_vomiting_when_agent_asked_nausea() -> None:
-    session = CallSessionState(
-        call_id=uuid4(),
-        procedure_scenario=ProcedureScenario.APPENDICITIS,
-        postop_day=2,
-    )
+    session = make_session()
+    session.current_focal_symptom = "vomitos_episodios"
     session.turns.append(
         TurnRecord(
             turn_number=2,
@@ -120,8 +109,7 @@ def test_enrich_llm_output_fills_vomiting_when_agent_asked_nausea() -> None:
 
     enriched = enrich_llm_output(session, "si", llm_output, reference_date=date(2026, 8, 8))
 
-    assert enriched.hechos.vomitos == YesNo.SI
-    assert enriched.foco == ClinicalAxis.DIGESTIVO
+    assert enriched.sintomas.get("vomitos_episodios") == "si"
 
 
 def test_compose_response_skips_disclaimer_for_valid_numeric_pain() -> None:

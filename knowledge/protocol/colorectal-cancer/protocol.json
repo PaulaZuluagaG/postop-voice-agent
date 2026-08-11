@@ -1,7 +1,7 @@
 {
-  "procedure": "colorectal_cancer",
+  "procedure": "colorectal_cancer_surgery",
   "version": "1.0",
-  "generated_at": "2026-08-10T23:37:18.947877Z",
+  "generated_at": "2026-08-11T00:43:36.999507Z",
   "source_ids": [
     "src_36987cc1f902f9cd",
     "src_3884fb964a29eeae",
@@ -13,36 +13,8 @@
   ],
   "symptoms": [
     {
-      "id": "dolor_abdominal",
-      "question": "¿Cómo calificaría su nivel de dolor en una escala del 0 al 10?",
-      "type": "numeric",
-      "levels": [
-        {
-          "min": 0.0,
-          "max": 3.0,
-          "points": 0,
-          "label": "verde"
-        },
-        {
-          "min": 4.0,
-          "max": 7.0,
-          "points": 4,
-          "label": "amarillo"
-        },
-        {
-          "min": 8.0,
-          "max": 10.0,
-          "points": 10,
-          "label": "rojo"
-        }
-      ],
-      "fuentes": [
-        "src_c121efc2bc54932e"
-      ]
-    },
-    {
       "id": "fiebre",
-      "question": "¿Ha presentado fiebre o elevación de la temperatura corporal?",
+      "question": "¿Ha presentado fiebre o aumento de la temperatura corporal?",
       "type": "numeric",
       "levels": [
         {
@@ -69,8 +41,36 @@
       ]
     },
     {
-      "id": "ausencia_transito_intestinal",
-      "question": "¿Presenta imposibilidad para expulsar gases (flatos) o realizar deposiciones?",
+      "id": "dolor_abdominal",
+      "question": "¿Cómo califica su nivel de dolor en una escala del 0 al 10?",
+      "type": "numeric",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 3.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 4.0,
+          "max": 7.0,
+          "points": 4,
+          "label": "amarillo"
+        },
+        {
+          "min": 8.0,
+          "max": 10.0,
+          "points": 10,
+          "label": "rojo"
+        }
+      ],
+      "fuentes": [
+        "src_c121efc2bc54932e"
+      ]
+    },
+    {
+      "id": "ileo_postoperatorio",
+      "question": "¿Presenta ausencia de deposiciones, incapacidad para expulsar gases o distensión abdominal?",
       "type": "binary",
       "levels": [
         {
@@ -87,37 +87,14 @@
         }
       ],
       "fuentes": [
+        "src_bfd336487cfbf38e",
         "src_3f8a2a0813621f8e",
-        "src_bfd336487cfbf38e",
         "src_3884fb964a29eeae"
       ]
     },
     {
-      "id": "infeccion_sitio_operatorio",
-      "question": "¿Presenta enrojecimiento, calor, secreción purulenta o salida de pus en la herida quirúrgica?",
-      "type": "binary",
-      "levels": [
-        {
-          "min": 0.0,
-          "max": 0.0,
-          "points": 0,
-          "label": "verde"
-        },
-        {
-          "min": 1.0,
-          "max": 1.0,
-          "points": 10,
-          "label": "rojo"
-        }
-      ],
-      "fuentes": [
-        "src_bfd336487cfbf38e",
-        "src_3884fb964a29eeae"
-      ]
-    },
-    {
-      "id": "sangrado_postoperatorio",
-      "question": "¿Ha notado sangrado abundante a través de la herida quirúrgica, el recto o los drenajes?",
+      "id": "sangrado_quirurgico",
+      "question": "¿Ha notado sangrado abundante a través de la herida quirúrgica o expulsión de sangre por el recto?",
       "type": "binary",
       "levels": [
         {
@@ -138,8 +115,8 @@
       ]
     },
     {
-      "id": "sintomas_urinarios",
-      "question": "¿Siente dolor, ardor intenso al orinar o incapacidad para vaciar la vejiga?",
+      "id": "infeccion_sitio_operatorio",
+      "question": "¿Nota enrojecimiento, calor, inflamación o salida de pus en la herida quirúrgica?",
       "type": "binary",
       "levels": [
         {
@@ -151,7 +128,7 @@
         {
           "min": 1.0,
           "max": 1.0,
-          "points": 5,
+          "points": 8,
           "label": "amarillo"
         }
       ],
@@ -161,8 +138,32 @@
       ]
     },
     {
-      "id": "dificultad_respiratoria",
-      "question": "¿Siente dificultad para respirar, falta de aire o tos persistente con secreciones?",
+      "id": "filtracion_anastomosis",
+      "question": "¿Presenta dolor abdominal agudo e intenso acompañado de malestar generalizado o escalofríos?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 10,
+          "label": "rojo"
+        }
+      ],
+      "fuentes": [
+        "src_bfd336487cfbf38e",
+        "src_36987cc1f902f9cd",
+        "src_3884fb964a29eeae"
+      ]
+    },
+    {
+      "id": "complicacion_respiratoria",
+      "question": "¿Siente dificultad para respirar, tos con flema o dolor en el pecho al inspirar?",
       "type": "binary",
       "levels": [
         {
@@ -183,6 +184,29 @@
         "src_3884fb964a29eeae",
         "src_c121efc2bc54932e"
       ]
+    },
+    {
+      "id": "infeccion_urinaria",
+      "question": "¿Tiene ardor, molestia al orinar o necesidad frecuente de orinar desde el retiro de la sonda vesical?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 4,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_bfd336487cfbf38e",
+        "src_3884fb964a29eeae"
+      ]
     }
   ],
   "thresholds": {
@@ -191,13 +215,11 @@
     "rojo": 15
   },
   "alert_signs": [
-    "Filtración de anastomosis",
-    "Íleo paralítico postoperatorio",
-    "Sepsis abdominal",
-    "Colección o absceso intraabdominal",
-    "Infección del sitio operatorio (ISO)",
-    "Fístula intestinal",
+    "Filtración de la anastomosis",
+    "Sangrado postoperatorio mayor a 500 ml o sangrado rectal abundante",
+    "Sepsis abdominal o colección intraabdominal / abscesos",
     "Isquemia intestinal",
-    "Falla ventilatoria"
+    "Falla ventilatoria o neumonía grave",
+    "Trombosis venosa profunda o tromboembolismo pulmonar (águlos de sangre en piernas o pulmones)"
   ]
 }

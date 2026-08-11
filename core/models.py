@@ -131,6 +131,7 @@ class ParsedDocument(BaseModel):
     source_id: str
     file_path: str
     file_name: str
+    procedure_id: str
     procedure_scenario: ProcedureScenario
     document_type: DocumentType
     language: str
@@ -148,6 +149,7 @@ class TextChunk(BaseModel):
     chunk_index: int
     page_start: int
     page_end: int
+    procedure_id: str
     procedure_scenario: ProcedureScenario
     document_type: DocumentType
     language: str
@@ -221,8 +223,10 @@ def _yes_no_to_bool(value: YesNo | None) -> bool | None:
 class LLMTurnOutput(BaseModel):
     categoria: ResponseCategory
     foco: ClinicalAxis = ClinicalAxis.NINGUNO
+    foco_sintoma: str | None = None
     evidencia_suficiente: bool = False
     hechos: ClinicalFacts = Field(default_factory=ClinicalFacts)
+    sintomas: dict[str, float | str | None] = Field(default_factory=dict)
     texto_paciente: str
     pregunta: str | None = None
     fuentes: list[str] = Field(default_factory=list)
@@ -250,7 +254,12 @@ class TurnRecord(BaseModel):
     retrieved_chunks: list[RetrievedChunk] = Field(default_factory=list)
     llm_output: LLMTurnOutput | None = None
     symptoms: PatientFacts = Field(default_factory=PatientFacts)
+    protocol_procedure: str = "general"
+    symptom_id: str | None = None
+    base_score: int = 0
+    day_factor: float = 1.0
     turn_score: int = 0
+    weighted_score: int = 0
     cumulative_score: int = 0
     rules_applied: list[str] = Field(default_factory=list)
     alert_triggered: bool = False
@@ -260,13 +269,22 @@ class TurnRecord(BaseModel):
 
 class CallSessionState(BaseModel):
     call_id: UUID
+    procedure_id: str
     procedure_scenario: ProcedureScenario
     postop_day: int
     patient_name: str = "Paciente"
     patient_id: str | None = None
     opening_message: str | None = None
     surgery_date: str | None = None
+    custom_procedure: str | None = None
+    uses_general_protocol: bool = False
+    protocol_key: str = "general"
+    protocol_symptoms: list[dict[str, object]] = Field(default_factory=list)
+    protocol_thresholds: dict[str, int] = Field(default_factory=dict)
+    protocol_alert_signs: list[str] = Field(default_factory=list)
     covered_axes: set[ClinicalAxis] = Field(default_factory=set)
+    covered_symptoms: set[str] = Field(default_factory=set)
+    current_focal_symptom: str | None = None
     cumulative_score: int = 0
     current_severity: SeverityLevel = SeverityLevel.GREEN
     alert_triggered: bool = False
@@ -278,11 +296,15 @@ class CallSessionState(BaseModel):
 
 class CallSummary(BaseModel):
     call_id: UUID
+    procedure_id: str
     procedure_scenario: ProcedureScenario
+    custom_procedure: str | None = None
+    protocol_used: str = "general"
     postop_day: int
     final_score: int
     severity: SeverityLevel
     alert_triggered: bool
+    physician_escalated: bool = False
     sources_used: list[str]
     turn_count: int
     closed_reason: str
@@ -292,6 +314,7 @@ class CallSummary(BaseModel):
 class SourceAggregate(BaseModel):
     source_id: str
     file_name: str
+    procedure_id: str = ""
     procedure_scenario: ProcedureScenario
     document_type: DocumentType
     language: str

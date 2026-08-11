@@ -15,5 +15,16 @@ class ProcedureTypeOption(BaseModel):
     label: str
 
 
+class ProcedureSuggestion(BaseModel):
+    suggested_procedure: str
+    temp_id: str
+
+
+class DocumentConfirmRequest(BaseModel):
+    temp_id: str
+    procedure_id: str
+    file_name: str
+
+
 class ErrorDetail(BaseModel):
     detail: str
