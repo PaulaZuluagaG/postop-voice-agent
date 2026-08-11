@@ -5,7 +5,8 @@ from __future__ import annotations
 import time
 
 from core.config import Settings, get_settings
-from core.models import ProcedureScenario, RetrievedChunk
+from core.models import RetrievedChunk
+from core.scenarios import FOLDER_TO_SCENARIO, procedure_display_label
 from knowledge.ingest.embedder import EmbeddingService
 from knowledge.store.qdrant_store import QdrantVectorStore
 
@@ -24,16 +25,23 @@ class ContextualRetriever:
         self._store = store or QdrantVectorStore(self._settings)
         self._embedder = embedder or EmbeddingService(self._settings)
 
+    @staticmethod
+    def _procedure_label(procedure_key: str) -> str:
+        scenario = FOLDER_TO_SCENARIO.get(procedure_key.lower())
+        if scenario is not None:
+            return scenario.value.replace("_", " ")
+        return procedure_display_label(procedure_key)
+
     def build_enriched_query(
         self,
         patient_message: str,
         *,
-        procedure_scenario: ProcedureScenario,
+        procedure_id: str,
         postop_day: int,
         conversation_context: str = "",
     ) -> str:
         parts = [
-            f"Escenario: {procedure_scenario.value.replace('_', ' ')}",
+            f"Escenario: {self._procedure_label(procedure_id)}",
             f"Día postoperatorio: {postop_day}",
             f"Mensaje del paciente: {patient_message.strip()}",
         ]
@@ -45,7 +53,7 @@ class ContextualRetriever:
         self,
         patient_message: str,
         *,
-        procedure_scenario: ProcedureScenario,
+        procedure_id: str,
         postop_day: int,
         conversation_context: str = "",
         top_k: int | None = None,
@@ -54,14 +62,14 @@ class ContextualRetriever:
         start = time.perf_counter()
         query = self.build_enriched_query(
             patient_message,
-            procedure_scenario=procedure_scenario,
+            procedure_id=procedure_id,
             postop_day=postop_day,
             conversation_context=conversation_context,
         )
         query_vector = self._embedder.embed_texts([query])[0]
         hits = self._store.search(
             query_vector,
-            procedure_scenario=procedure_scenario.value,
+            procedure_scenario=procedure_id,
             top_k=top_k,
             score_threshold=score_threshold,
         )

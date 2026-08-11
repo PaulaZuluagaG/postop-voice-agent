@@ -10,9 +10,13 @@ from pathlib import Path
 
 from core.config import Settings, get_settings
 from core.exceptions import LLMError
-from core.models import ProcedureScenario, RetrievedChunk
+from core.models import RetrievedChunk
 from core.retry import gemini_is_daily_quota_error
-from core.scenarios import list_scenarios_from_textos
+from core.scenarios import (
+    canonical_procedure_id,
+    legacy_protocol_directory_names,
+    list_scenarios_from_textos,
+)
 from knowledge.protocol.fallback import merge_with_general_fallback
 from knowledge.protocol.gemini_client import ProtocolGeminiClient
 from knowledge.protocol.models import (
@@ -45,19 +49,27 @@ def write_general_protocol(output_dir: Path) -> Path:
     return destination
 
 
-def procedure_protocol_path(
-    output_dir: Path,
-    procedure_scenario: ProcedureScenario,
-) -> Path:
-    return output_dir / procedure_scenario.value / GENERAL_PROTOCOL_FILENAME
+def procedure_protocol_path(output_dir: Path, procedure_id: str) -> Path:
+    canonical = canonical_procedure_id(procedure_id)
+    return output_dir / canonical / GENERAL_PROTOCOL_FILENAME
+
+
+def _remove_legacy_protocol_dirs(output_dir: Path, procedure_id: str) -> None:
+    for alias in legacy_protocol_directory_names(procedure_id):
+        legacy_dir = output_dir / alias
+        if legacy_dir.is_dir():
+            shutil.rmtree(legacy_dir)
+            logger.info("Removed legacy protocol directory %s", legacy_dir)
 
 
 def write_procedure_protocol(
     output_dir: Path,
-    procedure_scenario: ProcedureScenario,
+    procedure_id: str,
     protocol: PostOpProtocol,
 ) -> Path:
-    destination_dir = output_dir / procedure_scenario.value
+    canonical = canonical_procedure_id(procedure_id)
+    _remove_legacy_protocol_dirs(output_dir, canonical)
+    destination_dir = output_dir / canonical
     destination_dir.mkdir(parents=True, exist_ok=True)
     destination = destination_dir / GENERAL_PROTOCOL_FILENAME
     destination.write_text(
@@ -115,7 +127,7 @@ def _generate_protocol_with_llm(
 
 def _generate_protocol_for_procedure(
     *,
-    procedure_scenario: ProcedureScenario,
+    procedure_id: str,
     resolved_settings: Settings,
     resolved_retriever: ContextualRetriever,
     resolved_llm: ProtocolGeminiClient,
@@ -126,33 +138,31 @@ def _generate_protocol_for_procedure(
 
     _rag_query, chunks, _elapsed_ms = retrieve_protocol_context(
         resolved_retriever,
-        procedure_scenario,
+        procedure_id,
         settings=resolved_settings,
     )
     if not chunks:
-        raise ValueError(
-            f"{procedure_scenario.value}: no RAG fragments retrieved for protocol generation"
-        )
+        raise ValueError(f"{procedure_id}: no RAG fragments retrieved for protocol generation")
 
     try:
         protocol = _generate_protocol_with_llm(
             resolved_llm=resolved_llm,
-            procedure=procedure_scenario.value,
+            procedure=procedure_id,
             chunks=chunks,
             resolved_settings=resolved_settings,
         )
     except LLMError as exc:
         logger.warning(
             "LLM protocol generation failed for %s; applying general fallback: %s",
-            procedure_scenario.value,
+            procedure_id,
             exc,
         )
         protocol = merge_with_general_fallback(
             PostOpProtocol.from_llm_output(
-                _empty_protocol_payload(procedure_scenario.value),
+                _empty_protocol_payload(procedure_id),
                 source_ids=_chunk_source_ids(chunks),
             ),
-            procedure_scenario.value,
+            procedure_id,
             min_symptoms=min_symptoms,
             max_symptoms=resolved_settings.protocol_max_symptoms,
         )
@@ -162,12 +172,12 @@ def _generate_protocol_for_procedure(
     if len(protocol.symptoms) < min_symptoms:
         logger.info(
             "Sparse protocol for %s (%s symptoms); retrying with expanded retrieval",
-            procedure_scenario.value,
+            procedure_id,
             len(protocol.symptoms),
         )
         _expanded_query, expanded_chunks, _expanded_elapsed_ms = retrieve_protocol_context(
             resolved_retriever,
-            procedure_scenario,
+            procedure_id,
             settings=resolved_settings,
             expanded=True,
         )
@@ -175,16 +185,12 @@ def _generate_protocol_for_procedure(
             try:
                 retry_protocol = _generate_protocol_with_llm(
                     resolved_llm=resolved_llm,
-                    procedure=procedure_scenario.value,
+                    procedure=procedure_id,
                     chunks=expanded_chunks,
                     resolved_settings=resolved_settings,
                 )
             except LLMError as exc:
-                logger.warning(
-                    "Expanded retrieval LLM failed for %s: %s",
-                    procedure_scenario.value,
-                    exc,
-                )
+                logger.warning("Expanded retrieval LLM failed for %s: %s", procedure_id, exc)
                 retry_protocol = protocol
             else:
                 if len(retry_protocol.symptoms) > len(protocol.symptoms):
@@ -194,21 +200,64 @@ def _generate_protocol_for_procedure(
     if len(protocol.symptoms) < min_symptoms:
         logger.warning(
             "Applying general-protocol fallback for %s (%s symptoms after retry)",
-            procedure_scenario.value,
+            procedure_id,
             len(protocol.symptoms),
         )
         protocol = merge_with_general_fallback(
             protocol,
-            procedure_scenario.value,
+            procedure_id,
             min_symptoms=min_symptoms,
             max_symptoms=resolved_settings.protocol_max_symptoms,
         )
         used_fallback = True
 
     if len(protocol.symptoms) == 0:
-        raise ValueError(f"{procedure_scenario.value}: protocol has no symptoms after fallback")
+        raise ValueError(f"{procedure_id}: protocol has no symptoms after fallback")
 
     return protocol, chunks, used_fallback
+
+
+def generate_protocol_for_procedure(
+    procedure_id: str,
+    *,
+    settings: Settings | None = None,
+    store: QdrantVectorStore | None = None,
+    retriever: ContextualRetriever | None = None,
+    llm: ProtocolGeminiClient | None = None,
+    output_dir: Path | None = None,
+    force: bool = True,
+) -> ProcedureProtocolResult:
+    """Generate and persist a single procedure protocol."""
+    resolved_settings = settings or get_settings()
+    resolved_store = store or QdrantVectorStore(resolved_settings)
+    resolved_retriever = retriever or ContextualRetriever(resolved_settings, store=resolved_store)
+    resolved_llm = llm or ProtocolGeminiClient(resolved_settings)
+    resolved_output_dir = output_dir or resolved_settings.protocol_dir
+
+    existing_path = procedure_protocol_path(resolved_output_dir, procedure_id)
+    if not force and existing_path.exists():
+        raise FileExistsError(f"Protocol already exists for {procedure_id}")
+
+    protocol, chunks, used_fallback = _generate_protocol_for_procedure(
+        procedure_id=procedure_id,
+        resolved_settings=resolved_settings,
+        resolved_retriever=resolved_retriever,
+        resolved_llm=resolved_llm,
+    )
+    if used_fallback:
+        logger.info("Protocol for %s supplemented from general template", procedure_id)
+
+    protocol_path = write_procedure_protocol(resolved_output_dir, procedure_id, protocol)
+    updated_points = resolved_store.set_protocol_payload(
+        procedure_id,
+        protocol.model_dump(mode="json"),
+    )
+    return ProcedureProtocolResult(
+        procedure_scenario=procedure_id,
+        protocol_path=str(protocol_path),
+        chunks_retrieved=len(chunks),
+        qdrant_points_updated=updated_points,
+    )
 
 
 def generate_protocols_for_indexed_procedures(
@@ -220,7 +269,7 @@ def generate_protocols_for_indexed_procedures(
     output_dir: Path | None = None,
     force: bool = False,
 ) -> ProtocolGenerationReport:
-    """Generate procedure-specific protocols for all indexed scenarios in Qdrant."""
+    """Generate procedure-specific protocols for all indexed procedures in Qdrant."""
     resolved_settings = settings or get_settings()
     resolved_store = store or QdrantVectorStore(resolved_settings)
     resolved_retriever = retriever or ContextualRetriever(resolved_settings, store=resolved_store)
@@ -232,19 +281,22 @@ def generate_protocols_for_indexed_procedures(
         general_protocol_path=str(write_general_protocol(resolved_output_dir)),
     )
 
-    textos_scenarios = set(list_scenarios_from_textos(resolved_settings.textos_dir))
-    indexed_scenarios = set(resolved_store.list_indexed_scenarios())
-    scenarios_to_process = sorted(
-        textos_scenarios & indexed_scenarios,
-        key=lambda scenario: scenario.value,
-    )
+    textos_procedures = {
+        canonical_procedure_id(procedure_id)
+        for procedure_id in list_scenarios_from_textos(resolved_settings.textos_dir)
+    }
+    indexed_procedures = {
+        canonical_procedure_id(procedure_id)
+        for procedure_id in resolved_store.list_indexed_procedure_ids()
+    }
+    procedures_to_process = sorted(textos_procedures & indexed_procedures)
 
     pending_llm_call = False
-    for procedure_scenario in scenarios_to_process:
-        existing_path = procedure_protocol_path(resolved_output_dir, procedure_scenario)
+    for procedure_id in procedures_to_process:
+        existing_path = procedure_protocol_path(resolved_output_dir, procedure_id)
         if skip_existing and existing_path.exists():
-            report.skipped_procedures.append(procedure_scenario.value)
-            logger.info("Skipping existing protocol for %s", procedure_scenario.value)
+            report.skipped_procedures.append(procedure_id)
+            logger.info("Skipping existing protocol for %s", procedure_id)
             continue
 
         delay_seconds = resolved_settings.protocol_generation_delay_seconds
@@ -256,46 +308,27 @@ def generate_protocols_for_indexed_procedures(
             time.sleep(delay_seconds)
 
         try:
-            protocol, chunks, used_fallback = _generate_protocol_for_procedure(
-                procedure_scenario=procedure_scenario,
-                resolved_settings=resolved_settings,
-                resolved_retriever=resolved_retriever,
-                resolved_llm=resolved_llm,
+            result = generate_protocol_for_procedure(
+                procedure_id,
+                settings=resolved_settings,
+                store=resolved_store,
+                retriever=resolved_retriever,
+                llm=resolved_llm,
+                output_dir=resolved_output_dir,
+                force=True,
             )
-            if used_fallback:
-                logger.info(
-                    "Protocol for %s supplemented from general template",
-                    procedure_scenario.value,
-                )
-
             pending_llm_call = True
-            protocol_path = write_procedure_protocol(
-                resolved_output_dir,
-                procedure_scenario,
-                protocol,
-            )
-            updated_points = resolved_store.set_protocol_payload(
-                procedure_scenario,
-                protocol.model_dump(mode="json"),
-            )
-            report.procedures.append(
-                ProcedureProtocolResult(
-                    procedure_scenario=procedure_scenario.value,
-                    protocol_path=str(protocol_path),
-                    chunks_retrieved=len(chunks),
-                    qdrant_points_updated=updated_points,
-                )
-            )
+            report.procedures.append(result)
             logger.info(
                 "Generated protocol for %s (%s chunks, %s Qdrant points)",
-                procedure_scenario.value,
-                len(chunks),
-                updated_points,
+                procedure_id,
+                result.chunks_retrieved,
+                result.qdrant_points_updated,
             )
         except Exception as exc:  # noqa: BLE001
-            message = f"{procedure_scenario.value}: {exc}"
+            message = f"{procedure_id}: {exc}"
             report.errors.append(message)
-            logger.exception("Failed to generate protocol for %s", procedure_scenario.value)
+            logger.exception("Failed to generate protocol for %s", procedure_id)
             if _is_daily_gemini_quota_error(exc):
                 report.errors.append("Gemini daily quota exhausted; stopping remaining procedures.")
                 break

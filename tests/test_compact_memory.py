@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
-
 from agent.memory.compact_memory import (
     build_compact_memory,
     format_accumulated_facts,
@@ -14,7 +12,6 @@ from core.models import (
     CallSessionState,
     ClinicalFacts,
     LLMTurnOutput,
-    ProcedureScenario,
     ResponseCategory,
     TurnRecord,
     YesNo,
@@ -22,12 +19,10 @@ from core.models import (
 
 
 def _session_with_turns(turn_count: int) -> CallSessionState:
-    session = CallSessionState(
-        call_id=uuid4(),
-        procedure_scenario=ProcedureScenario.APPENDICITIS,
-        postop_day=2,
-        opening_message="Hola, ¿cómo está su dolor del 0 al 10?",
-    )
+    from tests.conftest import make_session
+
+    session = make_session()
+    session.opening_message = "Hola, ¿cómo está su dolor del 0 al 10?"
     for index in range(turn_count):
         pain = float(index + 1)
         session.turns.append(

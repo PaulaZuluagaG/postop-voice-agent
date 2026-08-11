@@ -29,6 +29,21 @@ def test_registration_from_frontend_requires_all_fields() -> None:
         )
 
 
+def test_registration_from_frontend_supports_other_with_custom_label() -> None:
+    registration = registration_from_frontend(
+        {
+            "name": "Paula",
+            "patientId": "PAC-002",
+            "surgeryDate": "2026-08-05",
+            "procedure": "other",
+            "customProcedure": "Reparación de hernia",
+        }
+    )
+    assert registration.procedure_id == "other"
+    assert registration.custom_procedure == "Reparación de hernia"
+    assert registration.uses_general_protocol is True
+
+
 def test_list_procedure_options_includes_other_and_disk_folders(tmp_path) -> None:
     (tmp_path / "cervical-cancer").mkdir()
     (tmp_path / "appendicitis").mkdir()

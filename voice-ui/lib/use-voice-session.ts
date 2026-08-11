@@ -10,7 +10,7 @@ import { VOICE_API_URL } from "@/lib/voice-api"
 
 type Speaker = "agent" | "patient" | null
 
-export function useVoiceSession(patient: PatientData) {
+export function useVoiceSession(patient: PatientData, onCallEnded?: () => void) {
   const clientRef = useRef<PipecatClient | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const botBufferRef = useRef("")
@@ -71,6 +71,7 @@ export function useVoiceSession(patient: PatientData) {
         },
         onDisconnected: () => {
           void endCall()
+          onCallEnded?.()
         },
         onUserStartedSpeaking: () => setSpeaker("patient"),
         onUserStoppedSpeaking: () => setSpeaker(null),
@@ -127,7 +128,7 @@ export function useVoiceSession(patient: PatientData) {
           : "No se pudo conectar con el agente de voz.",
       )
     }
-  }, [appendMessage, cleanupAudio, connecting, endCall, inCall, patient])
+  }, [appendMessage, cleanupAudio, connecting, endCall, inCall, onCallEnded, patient])
 
   useEffect(() => {
     return () => {

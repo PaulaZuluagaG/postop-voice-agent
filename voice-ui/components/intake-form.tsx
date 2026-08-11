@@ -11,7 +11,10 @@ export type PatientData = {
   surgeryDate: string
   procedure: string
   procedureLabel: string
+  customProcedure?: string
 }
+
+const OTHER_VALUE = "other"
 
 export function IntakeForm({ onStart }: { onStart: (data: PatientData) => void }) {
   const [form, setForm] = useState<PatientData>({
@@ -20,6 +23,7 @@ export function IntakeForm({ onStart }: { onStart: (data: PatientData) => void }
     surgeryDate: "",
     procedure: "",
     procedureLabel: "",
+    customProcedure: "",
   })
   const [errors, setErrors] = useState<Partial<Record<keyof PatientData, boolean>>>({})
   const [procedures, setProcedures] = useState<ProcedureOption[]>([])
@@ -48,14 +52,18 @@ export function IntakeForm({ onStart }: { onStart: (data: PatientData) => void }
     }
   }, [])
 
-  const isComplete = useMemo(
-    () =>
+  const isComplete = useMemo(() => {
+    const base =
       form.name.trim() &&
       form.patientId.trim() &&
       form.surgeryDate.trim() &&
-      form.procedure.trim(),
-    [form],
-  )
+      form.procedure.trim()
+    if (!base) return false
+    if (form.procedure === OTHER_VALUE) {
+      return Boolean(form.customProcedure?.trim())
+    }
+    return true
+  }, [form])
 
   function update<K extends keyof PatientData>(key: K, value: PatientData[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -64,15 +72,21 @@ export function IntakeForm({ onStart }: { onStart: (data: PatientData) => void }
 
   function updateProcedure(value: string) {
     const label = procedures.find((option) => option.value === value)?.label ?? value
-    setForm((f) => ({ ...f, procedure: value, procedureLabel: label }))
-    setErrors((e) => ({ ...e, procedure: false }))
+    setForm((f) => ({
+      ...f,
+      procedure: value,
+      procedureLabel: label,
+      customProcedure: value === OTHER_VALUE ? f.customProcedure ?? "" : "",
+    }))
+    setErrors((e) => ({ ...e, procedure: false, customProcedure: false }))
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const next: Partial<Record<keyof PatientData, boolean>> = {}
     ;(Object.keys(form) as (keyof PatientData)[]).forEach((k) => {
-      if (!form[k].trim()) next[k] = true
+      if (k === "customProcedure" && form.procedure !== OTHER_VALUE) return
+      if (!String(form[k] ?? "").trim()) next[k] = true
     })
     if (Object.keys(next).length > 0) {
       setErrors(next)
@@ -164,6 +178,23 @@ export function IntakeForm({ onStart }: { onStart: (data: PatientData) => void }
             <span className="text-xs font-medium text-destructive">{procedureError}</span>
           )}
         </Field>
+
+        {form.procedure === OTHER_VALUE && (
+          <Field
+            label="Nombre de su procedimiento"
+            htmlFor="customProcedure"
+            error={errors.customProcedure}
+          >
+            <input
+              id="customProcedure"
+              type="text"
+              value={form.customProcedure ?? ""}
+              onChange={(e) => update("customProcedure", e.target.value)}
+              placeholder="Ej. Reparación de hernia"
+              className="input-base"
+            />
+          </Field>
+        )}
 
         <button
           type="submit"

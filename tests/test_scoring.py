@@ -1,97 +1,94 @@
-from agent.decision.clinical_axes import pending_axes, update_covered_axes
+from agent.decision.protocol_triage import update_covered_symptoms
 from agent.decision.scoring import (
     apply_cumulative_score,
+    get_day_factor,
     resolve_severity,
-    score_turn,
+    score_turn_from_protocol,
     should_force_alert,
 )
 from agent.messages import ALERT_MESSAGE, build_no_evidence_message
 from core.models import (
-    ClinicalAxis,
     ClinicalFacts,
     LLMTurnOutput,
-    PatientFacts,
     ResponseCategory,
     SeverityLevel,
-    YesNo,
 )
+from knowledge.protocol.loader import load_general_protocol
+from knowledge.protocol.models import ProtocolThresholds
 
 
-def test_fever_high_scores_ten_points() -> None:
-    score, rules = score_turn(PatientFacts(fever_celsius=38.6))
-    assert score == 10
-    assert any("38.5" in rule for rule in rules)
+def test_day_factor_schedule() -> None:
+    assert get_day_factor(1) == 0.5
+    assert get_day_factor(2) == 0.75
+    assert get_day_factor(3) == 1.0
+    assert get_day_factor(7) == 1.25
+    assert get_day_factor(10) == 1.5
 
 
-def test_fever_moderate_scores_four_points() -> None:
-    score, _ = score_turn(PatientFacts(fever_celsius=37.8))
-    assert score == 4
+def test_protocol_fever_high_scores_with_day_factor() -> None:
+    protocol = load_general_protocol()
+    base, factor, weighted, rules = score_turn_from_protocol(
+        {"fiebre": 38.6},
+        protocol,
+        postop_day=3,
+    )
+    assert base == 10
+    assert factor == 1.0
+    assert weighted == 10
+    assert rules
 
 
-def test_pain_and_dyspnea_accumulate() -> None:
-    score, rules = score_turn(PatientFacts(pain=8.0, dyspnea=True))
-    assert score == 20
-    assert len(rules) == 2
+def test_protocol_pain_and_dyspnea_accumulate() -> None:
+    protocol = load_general_protocol()
+    base, _factor, weighted, rules = score_turn_from_protocol(
+        {"dolor": 8.0, "respiracion": "si"},
+        protocol,
+        postop_day=3,
+    )
+    assert base == 20
+    assert weighted == 20
+    assert len(rules) >= 2
 
 
-def test_vomiting_threshold() -> None:
-    score, rules = score_turn(PatientFacts(vomiting_count=3))
-    assert score == 10
-    assert any("Vómitos" in rule for rule in rules)
-
-
-def test_cumulative_severity_thresholds() -> None:
-    assert resolve_severity(7) == SeverityLevel.GREEN
-    assert resolve_severity(8) == SeverityLevel.YELLOW
-    assert resolve_severity(15) == SeverityLevel.RED
+def test_cumulative_severity_thresholds_from_protocol() -> None:
+    thresholds = ProtocolThresholds(verde=0, amarillo=8, rojo=15)
+    assert resolve_severity(7, thresholds) == SeverityLevel.GREEN
+    assert resolve_severity(8, thresholds) == SeverityLevel.YELLOW
+    assert resolve_severity(15, thresholds) == SeverityLevel.RED
 
 
 def test_implicit_alert_forces_escalation_with_low_score() -> None:
-    assert should_force_alert(4, implicit_alert=True) is True
-    assert should_force_alert(4, implicit_alert=False) is False
-    assert should_force_alert(16, implicit_alert=False) is True
+    thresholds = ProtocolThresholds(verde=0, amarillo=8, rojo=15)
+    assert should_force_alert(4, implicit_alert=True, critical_alert=False, thresholds=thresholds)
+    assert not should_force_alert(
+        4, implicit_alert=False, critical_alert=False, thresholds=thresholds
+    )
+    assert should_force_alert(16, implicit_alert=False, critical_alert=False, thresholds=thresholds)
 
 
-def test_implicit_alert_forces_score_to_fifteen() -> None:
+def test_implicit_alert_forces_score_to_threshold() -> None:
+    thresholds = ProtocolThresholds(verde=0, amarillo=8, rojo=15)
     cumulative, rules = apply_cumulative_score(
         4,
         0,
         categoria=ResponseCategory.ALERTA_IMPLICITA,
+        thresholds=thresholds,
     )
     assert cumulative == 15
     assert any("Alerta implícita" in rule for rule in rules)
 
 
-def test_clinical_facts_to_patient_facts() -> None:
-    facts = ClinicalFacts(
-        dolor_0_10=7.0,
-        disnea=YesNo.SI,
-        sangreado=YesNo.NO,
-    ).to_patient_facts()
-    assert facts.pain == 7.0
-    assert facts.dyspnea is True
-    assert facts.bleeding is False
-
-
-def test_update_covered_axes_from_facts_and_foco() -> None:
+def test_update_covered_symptoms_from_sintomas_dict() -> None:
     output = LLMTurnOutput(
         categoria=ResponseCategory.RESPUESTA_VALIDA,
-        foco=ClinicalAxis.MOVILIDAD,
-        hechos=ClinicalFacts(dolor_0_10=5.0, disnea=YesNo.NO),
+        foco_sintoma="dolor",
+        sintomas={"dolor": 5.0},
+        hechos=ClinicalFacts(),
         texto_paciente="Entendido.",
-        pregunta="¿Puede caminar?",
+        pregunta="¿Ha tenido fiebre?",
     )
-    covered = update_covered_axes(set(), output)
-    assert ClinicalAxis.DOLOR in covered
-    assert ClinicalAxis.RESPIRACION in covered
-    assert ClinicalAxis.MOVILIDAD in covered
-
-
-def test_pending_axes_lists_uncovered() -> None:
-    pending = pending_axes({ClinicalAxis.DOLOR, ClinicalAxis.HERIDA})
-    assert ClinicalAxis.DIGESTIVO in pending
-    assert ClinicalAxis.MOVILIDAD in pending
-    assert ClinicalAxis.DOLOR not in pending
+    covered = update_covered_symptoms(set(), output, focal_symptom_id="dolor")
+    assert "dolor" in covered
 
 
 def test_alert_message_does_not_reference_911() -> None:

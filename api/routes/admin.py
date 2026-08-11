@@ -2,20 +2,51 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from google.api_core.exceptions import GoogleAPIError, ResourceExhausted
 
 from api.auth import require_admin_token
-from api.schemas import DocumentItem, ProcedureTypeOption
+from api.schemas import DocumentItem, ProcedureSuggestion, ProcedureTypeOption
 from api.services.documents import (
     DocumentNotFoundError,
     DocumentService,
     DocumentValidationError,
+    PendingUploadNotFoundError,
     get_document_service,
 )
 from core.exceptions import InsufficientTextError, LLMError, PostOpError
-from core.models import ProcedureScenario
+from core.retry import gemini_is_daily_quota_error
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["admin"])
+
+
+def _gemini_error_detail(exc: Exception) -> str:
+    if gemini_is_daily_quota_error(exc):
+        return (
+            "Cuota diaria de Gemini agotada. Espera al reset diario o cambia GEMINI_MODEL "
+            "en .env antes de volver a clasificar documentos."
+        )
+    if isinstance(exc, ResourceExhausted):
+        return "Gemini rechazó la solicitud por límite de tasa. Intenta de nuevo en un minuto."
+    if isinstance(exc, LLMError):
+        return str(exc)
+    if isinstance(exc, PostOpError):
+        return str(exc)
+    if isinstance(exc, GoogleAPIError):
+        return f"Error de Gemini: {exc}"
+    return "No se pudo clasificar el documento. Revisa los logs del servidor."
+
+
+def _raise_gemini_http_error(exc: Exception) -> None:
+    logger.exception("Gemini operation failed during admin document flow")
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=_gemini_error_detail(exc),
+    ) from exc
 
 
 @router.get("/procedure-types", response_model=list[ProcedureTypeOption])
@@ -34,6 +65,63 @@ def list_documents(
     return service.list_documents()
 
 
+@router.post("/documents/analyze", response_model=ProcedureSuggestion)
+async def analyze_document(
+    file: UploadFile = File(...),
+    _: None = Depends(require_admin_token),
+    service: DocumentService = Depends(get_document_service),
+) -> ProcedureSuggestion:
+    file_name, file_bytes = await _read_pdf_upload(file)
+    try:
+        return service.analyze_document(file_name=file_name, file_bytes=file_bytes)
+    except InsufficientTextError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    except LLMError as exc:
+        _raise_gemini_http_error(exc)
+    except (ResourceExhausted, GoogleAPIError) as exc:
+        _raise_gemini_http_error(exc)
+    except PostOpError as exc:
+        _raise_gemini_http_error(exc)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error analyzing document %s", file_name)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al analizar el documento.",
+        ) from exc
+
+
+@router.post("/documents/confirm", response_model=DocumentItem, status_code=status.HTTP_201_CREATED)
+async def confirm_document(
+    temp_id: str = Form(...),
+    procedure_id: str = Form(...),
+    file_name: str = Form(...),
+    _: None = Depends(require_admin_token),
+    service: DocumentService = Depends(get_document_service),
+) -> DocumentItem:
+    try:
+        return service.confirm_document(
+            temp_id=temp_id.strip(),
+            procedure_id=procedure_id.strip(),
+            file_name=file_name.strip(),
+        )
+    except PendingUploadNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except LLMError as exc:
+        _raise_gemini_http_error(exc)
+    except (ResourceExhausted, GoogleAPIError) as exc:
+        _raise_gemini_http_error(exc)
+    except PostOpError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        ) from exc
+
+
 @router.post("/documents", response_model=DocumentItem, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     file: UploadFile = File(...),
@@ -47,58 +135,33 @@ async def upload_document(
             detail="procedure_type es obligatorio.",
         )
 
-    try:
-        scenario = ProcedureScenario(procedure_type.strip())
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"procedure_type inválido: {procedure_type}",
-        ) from exc
-
-    file_name = file.filename or ""
-    if not file_name.lower().endswith(".pdf"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Solo se admiten archivos PDF.",
-        )
-
-    file_bytes = await file.read()
-    if not file_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="El archivo PDF está vacío.",
-        )
+    file_name, file_bytes = await _read_pdf_upload(file)
 
     try:
         return service.upload_document(
             file_name=file_name,
             file_bytes=file_bytes,
-            procedure_scenario=scenario,
+            procedure_id=procedure_type.strip(),
         )
     except DocumentValidationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
     except InsufficientTextError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
     except LLMError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Error de validación LLM: {exc}",
-        ) from exc
+        _raise_gemini_http_error(exc)
+    except (ResourceExhausted, GoogleAPIError) as exc:
+        _raise_gemini_http_error(exc)
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
     except PostOpError as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
         ) from exc
 
 
@@ -114,6 +177,21 @@ def delete_document(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PostOpError as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
         ) from exc
+
+
+async def _read_pdf_upload(file: UploadFile) -> tuple[str, bytes]:
+    file_name = file.filename or ""
+    if not file_name.lower().endswith(".pdf"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Solo se admiten archivos PDF.",
+        )
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="El archivo PDF está vacío.",
+        )
+    return file_name, file_bytes

@@ -1,7 +1,7 @@
 {
-  "procedure": "cervical_cancer",
+  "procedure": "cervical-cancer",
   "version": "1.0",
-  "generated_at": "2026-08-10T23:36:13.726289Z",
+  "generated_at": "2026-08-11T00:43:06.114564Z",
   "source_ids": [
     "src_3567032085bcbf0b",
     "src_97fc5573dd4407cc",
@@ -13,8 +13,8 @@
   ],
   "symptoms": [
     {
-      "id": "complicaciones_tratamiento",
-      "question": "¿Ha presentado alguna complicación o síntoma de sospecha de recurrencia tras la cirugía?",
+      "id": "retencion_urinaria",
+      "question": "¿Ha tenido dificultad o imposibilidad para orinar de forma espontánea (retención urinaria)?",
       "type": "binary",
       "levels": [
         {
@@ -26,18 +26,67 @@
         {
           "min": 1.0,
           "max": 1.0,
-          "points": 15,
+          "points": 10,
           "label": "rojo"
         }
       ],
       "fuentes": [
-        "src_ef65cfd4d6d4f2c0",
-        "src_e9471c40a03e9da9"
+        "src_3567032085bcbf0b"
       ]
     },
     {
-      "id": "disfuncion_sexual",
-      "question": "¿Ha experimentado molestias, dolor o alteraciones significativas en su función sexual tras la intervención?",
+      "id": "infeccion_incisional",
+      "question": "¿Presenta signos de infección en la incisión quirúrgica (secreción, pus, enrojecimiento o calor local)?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 10,
+          "label": "rojo"
+        }
+      ],
+      "fuentes": [
+        "src_3567032085bcbf0b"
+      ]
+    },
+    {
+      "id": "dolor_pelvico",
+      "question": "¿En una escala del 0 al 10, qué tan intenso es el dolor pélvico que siente?",
+      "type": "numeric",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 3.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 4.0,
+          "max": 7.0,
+          "points": 4,
+          "label": "amarillo"
+        },
+        {
+          "min": 8.0,
+          "max": 10.0,
+          "points": 10,
+          "label": "rojo"
+        }
+      ],
+      "fuentes": [
+        "src_9e3ab31ed4d8733b"
+      ]
+    },
+    {
+      "id": "distension_abdominal",
+      "question": "¿Ha notado inflamación o distensión abdominal importante desde la cirugía?",
       "type": "binary",
       "levels": [
         {
@@ -54,13 +103,12 @@
         }
       ],
       "fuentes": [
-        "src_ef65cfd4d6d4f2c0",
-        "src_97fc5573dd4407cc"
+        "src_3567032085bcbf0b"
       ]
     },
     {
       "id": "ansiedad",
-      "question": "¿Siente estados de ansiedad, preocupación excesiva o tensión nerviosa desmesurada?",
+      "question": "¿Ha experimentado niveles significativos de ansiedad o nerviosismo descontrolado?",
       "type": "binary",
       "levels": [
         {
@@ -82,7 +130,7 @@
     },
     {
       "id": "depresion",
-      "question": "¿Ha presentado sentimientos persistentes de tristeza, apatía o desánimo tras el procedimiento?",
+      "question": "¿Se ha sentido con estado de ánimo bajo, tristeza persistente o síntomas depresivos?",
       "type": "binary",
       "levels": [
         {
@@ -101,28 +149,6 @@
       "fuentes": [
         "src_3567032085bcbf0b"
       ]
-    },
-    {
-      "id": "sintomas_menopausicos",
-      "question": "¿Presenta síntomas postmenopáusicos intensos como sofocos, bochornos o sequedad de inicio o empeoramiento reciente?",
-      "type": "binary",
-      "levels": [
-        {
-          "min": 0.0,
-          "max": 0.0,
-          "points": 0,
-          "label": "verde"
-        },
-        {
-          "min": 1.0,
-          "max": 1.0,
-          "points": 4,
-          "label": "amarillo"
-        }
-      ],
-      "fuentes": [
-        "src_e9471c40a03e9da9"
-      ]
     }
   ],
   "thresholds": {
@@ -131,9 +157,9 @@
     "rojo": 15
   },
   "alert_signs": [
-    "Complicaciones graves asociadas al tratamiento quirúrgico",
-    "Signos o síntomas de recurrencia tumoral pélvica o a distancia",
-    "Morbilidad psicosexual o disfunción sexual persistente",
-    "Síntomas de ansiedad o depresión moderada a severa"
+    "Retención urinaria postoperatoria",
+    "Infección de la incisión quirúrgica",
+    "Dolores pélvicos severos o progresivos",
+    "Falla renal obstructiva"
   ]
 }

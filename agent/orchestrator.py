@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import date
 from uuid import UUID, uuid4
 
-from agent.decision.clinical_axes import pending_axes, update_covered_axes
 from agent.decision.disclaimer_policy import should_replace_with_disclaimer
 from agent.decision.intake import (
     compute_postop_day,
@@ -16,11 +16,24 @@ from agent.decision.intake import (
     resolve_surgery_date,
 )
 from agent.decision.procedure_evidence import has_procedure_specific_evidence
+from agent.decision.protocol_triage import (
+    all_symptoms_covered,
+    extract_symptom_values,
+    pending_symptoms,
+    update_covered_symptoms,
+)
 from agent.decision.scoring import (
     apply_cumulative_score,
+    detect_critical_alert,
     resolve_severity,
-    score_turn,
+    score_turn_from_protocol,
     should_force_alert,
+)
+from agent.decision.session_protocol import (
+    attach_protocol_to_session,
+    next_protocol_question,
+    pending_protocol_symptoms,
+    protocol_from_session,
 )
 from agent.decision.turn_enrichment import enrich_llm_output, take_first_question
 from agent.llm.groq_client import GroqClient
@@ -28,7 +41,6 @@ from agent.llm.streaming import GroqStreamingClient, drain_output_future
 from agent.memory.compact_memory import build_compact_memory
 from agent.messages import (
     ALERT_MESSAGE,
-    DEFAULT_OPENING_QUESTION,
     MAX_TURNS_CLOSE_MESSAGE,
     build_no_evidence_message,
     build_opening_intro,
@@ -47,8 +59,21 @@ from core.models import (
     TurnRecord,
     TurnTimings,
 )
-from core.scenarios import scenario_label
+from core.scenarios import procedure_display_label, scenario_to_procedure_id
 from knowledge.retrieval.retriever import ContextualRetriever
+
+
+@dataclass
+class _TurnDecision:
+    agent_response: str
+    base_score: int
+    day_factor: float
+    weighted_score: int
+    cumulative_score: int
+    rules: list[str]
+    severity: SeverityLevel
+    alert: bool
+    symptom_id: str | None
 
 
 class ConversationOrchestrator:
@@ -79,10 +104,13 @@ class ConversationOrchestrator:
         self,
         *,
         procedure_scenario: ProcedureScenario,
+        procedure_id: str | None = None,
         call_id: UUID | None = None,
         patient_name: str = "Paciente",
         patient_id: str | None = None,
         surgery_date: str | None = None,
+        custom_procedure: str | None = None,
+        uses_general_protocol: bool = False,
     ) -> CallSessionState:
         ref = self._reference_date or date.today()
         postop_day = 1
@@ -92,26 +120,44 @@ class ConversationOrchestrator:
             resolved_surgery_date = resolved.isoformat()
             postop_day = compute_postop_day(resolved, reference_date=ref)
 
+        resolved_procedure_id = procedure_id or scenario_to_procedure_id(procedure_scenario)
         session = CallSessionState(
             call_id=call_id or uuid4(),
+            procedure_id=resolved_procedure_id,
             procedure_scenario=procedure_scenario,
             postop_day=postop_day,
             patient_name=patient_name,
             patient_id=patient_id,
             surgery_date=resolved_surgery_date,
+            custom_procedure=custom_procedure,
+            uses_general_protocol=uses_general_protocol,
             opening_message=None,
         )
+        protocol = attach_protocol_to_session(session, uses_general_protocol=uses_general_protocol)
+        first_symptom = protocol.symptoms[0] if protocol.symptoms else None
+        session.current_focal_symptom = first_symptom.id if first_symptom else None
+
         self._sessions[session.call_id] = session
+        procedure_name = custom_procedure or procedure_display_label(resolved_procedure_id)
         self._trace.log_call_start(
             session.call_id,
+            procedure_id=resolved_procedure_id,
             procedure_scenario=procedure_scenario.value,
             postop_day=postop_day,
             patient_name=patient_name,
             patient_id=patient_id,
-            procedure_name=scenario_label(procedure_scenario),
+            procedure_name=procedure_name,
             surgery_date=resolved_surgery_date,
+            protocol_used=session.protocol_key,
+            custom_procedure=custom_procedure,
+            uses_general_protocol=uses_general_protocol,
         )
         return session
+
+    def _procedure_label(self, session: CallSessionState) -> str:
+        if session.custom_procedure:
+            return session.custom_procedure
+        return procedure_display_label(session.procedure_id)
 
     def begin_triage(self, call_id: UUID) -> str:
         """Run RAG bootstrap and produce the opening message with the first triage question."""
@@ -119,8 +165,9 @@ class ConversationOrchestrator:
         if session.opening_message:
             return session.opening_message
 
-        procedimiento = scenario_label(session.procedure_scenario)
-        ejes_pendientes = pending_axes(session.covered_axes)
+        procedimiento = self._procedure_label(session)
+        protocol = protocol_from_session(session)
+        pending = pending_symptoms(protocol, session.covered_symptoms)
         bootstrap_message = (
             f"cuidados postoperatorios complicaciones seguimiento "
             f"{procedimiento} día postoperatorio {session.postop_day}"
@@ -128,18 +175,24 @@ class ConversationOrchestrator:
 
         rag_query, retrieved, retrieval_ms = self._retriever.retrieve(
             bootstrap_message,
-            procedure_scenario=session.procedure_scenario,
+            procedure_id=session.procedure_id,
             postop_day=session.postop_day,
         )
-        has_evidence = has_procedure_specific_evidence(retrieved, session.procedure_scenario)
+        has_evidence = has_procedure_specific_evidence(
+            retrieved,
+            session.procedure_scenario,
+            procedure_id=session.procedure_id,
+        )
 
         llm_start = time.perf_counter()
         llm_output = self._llm.generate_opening(
             patient_name=session.patient_name,
             procedimiento=procedimiento,
             dia_postop=session.postop_day,
-            ejes_pendientes=ejes_pendientes,
+            pending_symptoms=pending,
+            alert_signs=protocol.alert_signs,
             has_procedure_evidence=has_evidence,
+            uses_general_protocol=session.uses_general_protocol,
             retrieved_chunks=retrieved,
             reference_date=self._reference_date or date.today(),
         )
@@ -158,6 +211,7 @@ class ConversationOrchestrator:
             {
                 "opening_message": opening_message,
                 "has_procedure_evidence": has_evidence,
+                "protocol_used": session.protocol_key,
                 "rag_query": rag_query,
                 "retrieved_chunk_count": len(retrieved),
                 "retrieval_ms": retrieval_ms,
@@ -179,13 +233,14 @@ class ConversationOrchestrator:
 
         turn_start = time.perf_counter()
         memory = build_compact_memory(session, self._settings)
-        ejes_pendientes = pending_axes(session.covered_axes)
-        procedimiento = scenario_label(session.procedure_scenario)
+        protocol = protocol_from_session(session)
+        pending = pending_symptoms(protocol, session.covered_symptoms)
+        procedimiento = self._procedure_label(session)
         mismatch = detect_procedure_mismatch(patient_message, session.procedure_scenario)
 
         rag_query, retrieved, retrieval_ms = self._retriever.retrieve(
             patient_message,
-            procedure_scenario=session.procedure_scenario,
+            procedure_id=session.procedure_id,
             postop_day=session.postop_day,
             conversation_context=memory.rag_context,
         )
@@ -196,8 +251,9 @@ class ConversationOrchestrator:
             patient_name=session.patient_name,
             procedimiento=procedimiento,
             dia_postop=session.postop_day,
-            ejes_cubiertos=session.covered_axes,
-            ejes_pendientes=ejes_pendientes,
+            covered_symptom_ids=session.covered_symptoms,
+            pending_symptoms=pending,
+            alert_signs=protocol.alert_signs,
             puntaje_total=session.cumulative_score,
             turno=session.turn_count + 1,
             max_turnos=self._settings.max_turns_per_call,
@@ -205,6 +261,7 @@ class ConversationOrchestrator:
             accumulated_facts=memory.accumulated_facts,
             retrieved_chunks=retrieved,
             reference_date=self._reference_date or date.today(),
+            current_focal_symptom=session.current_focal_symptom,
         )
         llm_ms = (time.perf_counter() - llm_start) * 1000
 
@@ -214,79 +271,55 @@ class ConversationOrchestrator:
             llm_output,
             reference_date=self._reference_date,
         )
-        session.covered_axes = update_covered_axes(session.covered_axes, llm_output)
-
-        agent_response = self._compose_response(
-            patient_message,
+        session.covered_symptoms = update_covered_symptoms(
+            session.covered_symptoms,
             llm_output,
+            focal_symptom_id=session.current_focal_symptom,
+        )
+
+        decision = self._apply_turn_decision(
+            session,
+            llm_output,
+            patient_message=patient_message,
             mismatch=mismatch,
-            registered_scenario=session.procedure_scenario,
         )
 
-        decision_start = time.perf_counter()
-        symptoms = llm_output.to_patient_facts()
-        turn_score, score_rules = score_turn(symptoms)
-        cumulative_score, cumulative_rules = apply_cumulative_score(
-            session.cumulative_score,
-            turn_score,
-            categoria=llm_output.categoria,
-            settings=self._settings,
-        )
-        session.cumulative_score = cumulative_score
-        rules = score_rules + cumulative_rules
-        severity = resolve_severity(session.cumulative_score, self._settings)
-        alert = should_force_alert(
-            session.cumulative_score,
-            implicit_alert=llm_output.implicit_alert,
-            settings=self._settings,
-        )
-
-        if alert:
-            agent_response = ALERT_MESSAGE
-            session.alert_triggered = True
-            severity = SeverityLevel.RED
-            session.call_closed = True
-
-        session.current_severity = severity
+        session.current_severity = decision.severity
         session.turn_count += 1
         for chunk in retrieved:
             session.sources_used.add(chunk.source_id)
         for source_id in llm_output.fuentes:
             session.sources_used.add(source_id)
 
-        decision_ms = (time.perf_counter() - decision_start) * 1000
         total_ms = (time.perf_counter() - turn_start) * 1000
-
         turn = TurnRecord(
             turn_number=session.turn_count,
             patient_input=patient_message,
-            agent_response=agent_response,
+            agent_response=decision.agent_response,
             rag_query=rag_query,
             retrieved_chunks=retrieved,
             llm_output=llm_output,
-            symptoms=symptoms,
-            turn_score=turn_score,
-            cumulative_score=session.cumulative_score,
-            rules_applied=rules,
-            alert_triggered=alert,
-            severity=severity,
+            symptoms=llm_output.to_patient_facts(),
+            protocol_procedure=session.protocol_key,
+            symptom_id=decision.symptom_id,
+            base_score=decision.base_score,
+            day_factor=decision.day_factor,
+            turn_score=decision.weighted_score,
+            weighted_score=decision.weighted_score,
+            cumulative_score=decision.cumulative_score,
+            rules_applied=decision.rules,
+            alert_triggered=decision.alert,
+            severity=decision.severity,
             timings=TurnTimings(
                 retrieval_ms=retrieval_ms,
                 llm_ms=llm_ms,
-                decision_ms=decision_ms,
+                decision_ms=0.0,
                 total_ms=total_ms,
             ),
         )
         session.turns.append(turn)
         self._trace.log_turn(session.call_id, turn)
-
-        if alert:
-            self.close_call(session.call_id, reason="alert_triggered")
-        elif llm_output.pregunta is None and not alert:
-            self.close_call(session.call_id, reason="llm_closure")
-        elif session.turn_count >= self._settings.max_turns_per_call:
-            self.close_call(session.call_id, reason="max_turns_reached")
-
+        self._maybe_close_call(session, llm_output, alert=decision.alert)
         return turn
 
     async def stream_turn_response(
@@ -303,13 +336,14 @@ class ConversationOrchestrator:
 
         turn_start = time.perf_counter()
         memory = build_compact_memory(session, self._settings)
-        ejes_pendientes = pending_axes(session.covered_axes)
-        procedimiento = scenario_label(session.procedure_scenario)
+        protocol = protocol_from_session(session)
+        pending = pending_symptoms(protocol, session.covered_symptoms)
+        procedimiento = self._procedure_label(session)
         mismatch = detect_procedure_mismatch(patient_message, session.procedure_scenario)
 
         rag_query, retrieved, retrieval_ms = self._retriever.retrieve(
             patient_message,
-            procedure_scenario=session.procedure_scenario,
+            procedure_id=session.procedure_id,
             postop_day=session.postop_day,
             conversation_context=memory.rag_context,
         )
@@ -320,8 +354,9 @@ class ConversationOrchestrator:
             patient_name=session.patient_name,
             procedimiento=procedimiento,
             dia_postop=session.postop_day,
-            ejes_cubiertos=session.covered_axes,
-            ejes_pendientes=ejes_pendientes,
+            covered_symptom_ids=session.covered_symptoms,
+            pending_symptoms=pending,
+            alert_signs=protocol.alert_signs,
             puntaje_total=session.cumulative_score,
             turno=session.turn_count + 1,
             max_turnos=self._settings.max_turns_per_call,
@@ -329,6 +364,7 @@ class ConversationOrchestrator:
             accumulated_facts=memory.accumulated_facts,
             retrieved_chunks=retrieved,
             reference_date=self._reference_date or date.today(),
+            current_focal_symptom=session.current_focal_symptom,
             cancel_event=cancel_event,
         )
 
@@ -356,91 +392,68 @@ class ConversationOrchestrator:
             llm_output,
             reference_date=self._reference_date,
         )
-        session.covered_axes = update_covered_axes(session.covered_axes, llm_output)
-
-        agent_response = self._compose_response(
-            patient_message,
+        session.covered_symptoms = update_covered_symptoms(
+            session.covered_symptoms,
             llm_output,
+            focal_symptom_id=session.current_focal_symptom,
+        )
+
+        decision = self._apply_turn_decision(
+            session,
+            llm_output,
+            patient_message=patient_message,
             mismatch=mismatch,
-            registered_scenario=session.procedure_scenario,
         )
-
-        decision_start = time.perf_counter()
-        symptoms = llm_output.to_patient_facts()
-        turn_score, score_rules = score_turn(symptoms)
-        cumulative_score, cumulative_rules = apply_cumulative_score(
-            session.cumulative_score,
-            turn_score,
-            categoria=llm_output.categoria,
-            settings=self._settings,
-        )
-        session.cumulative_score = cumulative_score
-        rules = score_rules + cumulative_rules
-        severity = resolve_severity(session.cumulative_score, self._settings)
-        alert = should_force_alert(
-            session.cumulative_score,
-            implicit_alert=llm_output.implicit_alert,
-            settings=self._settings,
-        )
-
-        if alert:
-            agent_response = ALERT_MESSAGE
-            session.alert_triggered = True
-            severity = SeverityLevel.RED
-            session.call_closed = True
 
         streamed_text = "".join(streamed_parts).strip()
         if not (cancel_event and cancel_event.is_set()):
-            if alert and agent_response != streamed_text:
+            if decision.alert and decision.agent_response != streamed_text:
                 if streamed_text:
                     yield " "
-                yield agent_response
-            elif agent_response.startswith(streamed_text):
-                suffix = agent_response[len(streamed_text) :].strip()
+                yield decision.agent_response
+            elif decision.agent_response.startswith(streamed_text):
+                suffix = decision.agent_response[len(streamed_text) :].strip()
                 if suffix:
                     yield f" {suffix}"
-            elif agent_response != streamed_text:
-                yield agent_response
+            elif decision.agent_response != streamed_text:
+                yield decision.agent_response
 
-        session.current_severity = severity
+        session.current_severity = decision.severity
         session.turn_count += 1
         for chunk in retrieved:
             session.sources_used.add(chunk.source_id)
         for source_id in llm_output.fuentes:
             session.sources_used.add(source_id)
 
-        decision_ms = (time.perf_counter() - decision_start) * 1000
         total_ms = (time.perf_counter() - turn_start) * 1000
-
         turn = TurnRecord(
             turn_number=session.turn_count,
             patient_input=patient_message,
-            agent_response=agent_response,
+            agent_response=decision.agent_response,
             rag_query=rag_query,
             retrieved_chunks=retrieved,
             llm_output=llm_output,
-            symptoms=symptoms,
-            turn_score=turn_score,
-            cumulative_score=session.cumulative_score,
-            rules_applied=rules,
-            alert_triggered=alert,
-            severity=severity,
+            symptoms=llm_output.to_patient_facts(),
+            protocol_procedure=session.protocol_key,
+            symptom_id=decision.symptom_id,
+            base_score=decision.base_score,
+            day_factor=decision.day_factor,
+            turn_score=decision.weighted_score,
+            weighted_score=decision.weighted_score,
+            cumulative_score=decision.cumulative_score,
+            rules_applied=decision.rules,
+            alert_triggered=decision.alert,
+            severity=decision.severity,
             timings=TurnTimings(
                 retrieval_ms=retrieval_ms,
                 llm_ms=llm_ms,
-                decision_ms=decision_ms,
+                decision_ms=0.0,
                 total_ms=total_ms,
             ),
         )
         session.turns.append(turn)
         self._trace.log_turn(session.call_id, turn)
-
-        if alert:
-            self.close_call(session.call_id, reason="alert_triggered")
-        elif llm_output.pregunta is None and not alert:
-            self.close_call(session.call_id, reason="llm_closure")
-        elif session.turn_count >= self._settings.max_turns_per_call:
-            self.close_call(session.call_id, reason="max_turns_reached")
+        self._maybe_close_call(session, llm_output, alert=decision.alert)
 
     async def stream_opening_response(
         self,
@@ -454,8 +467,9 @@ class ConversationOrchestrator:
             yield session.opening_message
             return
 
-        procedimiento = scenario_label(session.procedure_scenario)
-        ejes_pendientes = pending_axes(session.covered_axes)
+        procedimiento = self._procedure_label(session)
+        protocol = protocol_from_session(session)
+        pending = pending_symptoms(protocol, session.covered_symptoms)
         bootstrap_message = (
             f"cuidados postoperatorios complicaciones seguimiento "
             f"{procedimiento} día postoperatorio {session.postop_day}"
@@ -463,18 +477,24 @@ class ConversationOrchestrator:
 
         rag_query, retrieved, retrieval_ms = self._retriever.retrieve(
             bootstrap_message,
-            procedure_scenario=session.procedure_scenario,
+            procedure_id=session.procedure_id,
             postop_day=session.postop_day,
         )
-        has_evidence = has_procedure_specific_evidence(retrieved, session.procedure_scenario)
+        has_evidence = has_procedure_specific_evidence(
+            retrieved,
+            session.procedure_scenario,
+            procedure_id=session.procedure_id,
+        )
 
         llm_start = time.perf_counter()
         stream = self._streaming_llm.stream_opening(
             patient_name=session.patient_name,
             procedimiento=procedimiento,
             dia_postop=session.postop_day,
-            ejes_pendientes=ejes_pendientes,
+            pending_symptoms=pending,
+            alert_signs=protocol.alert_signs,
             has_procedure_evidence=has_evidence,
+            uses_general_protocol=session.uses_general_protocol,
             retrieved_chunks=retrieved,
             reference_date=self._reference_date or date.today(),
             cancel_event=cancel_event,
@@ -520,12 +540,96 @@ class ConversationOrchestrator:
             {
                 "opening_message": opening_message,
                 "has_procedure_evidence": has_evidence,
+                "protocol_used": session.protocol_key,
                 "rag_query": rag_query,
                 "retrieved_chunk_count": len(retrieved),
                 "retrieval_ms": retrieval_ms,
                 "llm_ms": llm_ms,
             },
         )
+
+    def _apply_turn_decision(
+        self,
+        session: CallSessionState,
+        llm_output: LLMTurnOutput,
+        *,
+        patient_message: str,
+        mismatch: ProcedureScenario | None,
+    ) -> _TurnDecision:
+        protocol = protocol_from_session(session)
+        symptom_values = extract_symptom_values(llm_output)
+        base_score, day_factor, weighted_score, score_rules = score_turn_from_protocol(
+            symptom_values,
+            protocol,
+            session.postop_day,
+        )
+        cumulative_score, cumulative_rules = apply_cumulative_score(
+            session.cumulative_score,
+            weighted_score,
+            categoria=llm_output.categoria,
+            thresholds=protocol.thresholds,
+        )
+        session.cumulative_score = cumulative_score
+        rules = score_rules + cumulative_rules
+        critical = detect_critical_alert(
+            symptom_values,
+            protocol,
+            implicit_alert=llm_output.implicit_alert,
+        )
+        severity = resolve_severity(session.cumulative_score, protocol.thresholds)
+        alert = should_force_alert(
+            session.cumulative_score,
+            implicit_alert=llm_output.implicit_alert,
+            critical_alert=critical,
+            thresholds=protocol.thresholds,
+        )
+
+        agent_response = self._compose_response(
+            patient_message,
+            llm_output,
+            mismatch=mismatch,
+            registered_scenario=session.procedure_scenario,
+        )
+        if alert:
+            agent_response = ALERT_MESSAGE
+            session.alert_triggered = True
+            severity = SeverityLevel.RED
+            session.call_closed = True
+
+        next_pending = pending_protocol_symptoms(session)
+        session.current_focal_symptom = next_pending[0].id if next_pending else None
+
+        return _TurnDecision(
+            agent_response=agent_response,
+            base_score=base_score,
+            day_factor=day_factor,
+            weighted_score=weighted_score,
+            cumulative_score=session.cumulative_score,
+            rules=rules,
+            severity=severity,
+            alert=alert,
+            symptom_id=llm_output.foco_sintoma or session.current_focal_symptom,
+        )
+
+    def _maybe_close_call(
+        self,
+        session: CallSessionState,
+        llm_output: LLMTurnOutput,
+        *,
+        alert: bool,
+    ) -> None:
+        protocol = protocol_from_session(session)
+        if alert:
+            self.close_call(session.call_id, reason="alert_triggered")
+            return
+        if all_symptoms_covered(protocol, session.covered_symptoms):
+            self.close_call(session.call_id, reason="protocol_complete")
+            return
+        if llm_output.pregunta is None:
+            self.close_call(session.call_id, reason="llm_closure")
+            return
+        if session.turn_count >= self._settings.max_turns_per_call:
+            self.close_call(session.call_id, reason="max_turns_reached")
 
     def close_call(self, call_id: UUID, *, reason: str = "manual_close") -> CallSummary:
         session = self.get_session(call_id)
@@ -547,27 +651,20 @@ class ConversationOrchestrator:
     def _build_summary(self, session: CallSessionState, reason: str) -> CallSummary:
         return CallSummary(
             call_id=session.call_id,
+            procedure_id=session.procedure_id,
             procedure_scenario=session.procedure_scenario,
+            custom_procedure=session.custom_procedure,
+            protocol_used=session.protocol_key,
             postop_day=session.postop_day,
             final_score=session.cumulative_score,
             severity=session.current_severity,
             alert_triggered=session.alert_triggered,
+            physician_escalated=session.alert_triggered,
             sources_used=sorted(session.sources_used),
             turn_count=session.turn_count,
             closed_reason=reason,
             turn_history=session.turns,
         )
-
-    @staticmethod
-    def _build_conversation_context(session: CallSessionState) -> str:
-        """Legacy full-history builder; prefer build_compact_memory()."""
-        lines: list[str] = []
-        if session.opening_message:
-            lines.append(f"Agente: {session.opening_message}")
-        for turn in session.turns:
-            lines.append(f"Paciente: {turn.patient_input}")
-            lines.append(f"Agente: {turn.agent_response}")
-        return "\n".join(lines)
 
     @staticmethod
     def _compose_response(
@@ -598,17 +695,19 @@ class ConversationOrchestrator:
             return f"{base} {pregunta}".strip()
         return base
 
-    @staticmethod
     def _compose_opening(
+        self,
         session: CallSessionState,
         llm_output: LLMTurnOutput,
         has_evidence: bool,
     ) -> str:
-        procedimiento = scenario_label(session.procedure_scenario)
+        procedimiento = self._procedure_label(session)
         intro = build_opening_intro(
             patient_name=session.patient_name,
-            has_evidence=has_evidence,
+            has_evidence=has_evidence and not session.uses_general_protocol,
             procedure_name=procedimiento,
         )
-        pregunta = take_first_question(llm_output.pregunta) or DEFAULT_OPENING_QUESTION
+        pregunta = take_first_question(llm_output.pregunta) or next_protocol_question(session)
+        if pregunta is None:
+            pregunta = "¿Cómo se siente en este momento?"
         return f"{intro} {pregunta}".strip()

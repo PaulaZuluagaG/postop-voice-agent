@@ -30,11 +30,21 @@ export function Waveform({ active, speaker }: { active: boolean; speaker: Speake
 
     function draw() {
       const { width, height } = canvas.getBoundingClientRect()
+      if (width <= 0 || height <= 0) {
+        rafRef.current = requestAnimationFrame(draw)
+        return
+      }
+
       ctx.clearRect(0, 0, width, height)
 
       const mid = height / 2
       const gap = 3
-      const barWidth = (width - gap * (bars - 1)) / bars
+      const available = width - gap * (bars - 1)
+      if (available <= 0) {
+        rafRef.current = requestAnimationFrame(draw)
+        return
+      }
+      const barWidth = available / bars
 
       // Color reflects who is speaking. Indigo for agent, sky for patient.
       const color =
@@ -58,9 +68,10 @@ export function Waveform({ active, speaker }: { active: boolean; speaker: Speake
           amp = 0.06 + 0.02 * Math.sin(t * 0.04 + phases[i])
         }
         const barHeight = Math.max(3, amp * (height * 0.9))
+        if (barWidth <= 0 || barHeight <= 0) continue
         ctx.fillStyle = color
         ctx.globalAlpha = active ? 0.9 : 0.4
-        const r = barWidth / 2
+        const r = Math.min(barWidth / 2, barHeight / 2)
         roundRect(ctx, x, mid - barHeight / 2, barWidth, barHeight, r)
         ctx.fill()
       }
@@ -93,7 +104,14 @@ function roundRect(
   h: number,
   r: number,
 ) {
-  const radius = Math.min(r, w / 2, h / 2)
+  if (w <= 0 || h <= 0) return
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2))
+  if (radius === 0) {
+    ctx.beginPath()
+    ctx.rect(x, y, w, h)
+    ctx.closePath()
+    return
+  }
   ctx.beginPath()
   ctx.moveTo(x + radius, y)
   ctx.arcTo(x + w, y, x + w, y + h, radius)

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from core.config import Settings, get_settings
-from core.models import ProcedureScenario, RetrievedChunk
+from core.models import RetrievedChunk
+from core.scenarios import procedure_display_label
 from knowledge.retrieval.retriever import ContextualRetriever
 
 PROTOCOL_BASE_QUERIES: tuple[str, ...] = (
@@ -14,34 +15,16 @@ PROTOCOL_BASE_QUERIES: tuple[str, ...] = (
     "Signos de alarma que requieren consulta urgente o emergencia después de cirugía.",
 )
 
-PROCEDURE_SPECIFIC_QUERIES: dict[ProcedureScenario, tuple[str, ...]] = {
-    ProcedureScenario.APPENDICITIS: (
-        "Complicaciones de apendicectomía: perforación, absceso, infección de herida.",
-    ),
-    ProcedureScenario.CHOLECYSTITIS: (
-        "Cuidados postoperatorios de colecistectomía: dolor abdominal, ictericia, "
-        "intolerancia a grasas, náuseas.",
-    ),
-    ProcedureScenario.CERVICAL_CANCER: (
-        "Complicaciones postoperatorias de cirugía ginecológica: sangrado vaginal, "
-        "fiebre, dolor pélvico, infección.",
-    ),
-    ProcedureScenario.COLORECTAL_CANCER: (
-        "Recuperación postoperatoria de resección colorrectal: ileo paralítico, "
-        "dehiscencia, sangrado, fiebre, dolor abdominal.",
-    ),
-    ProcedureScenario.TOTAL_JOINT_REPLACEMENT: (
-        "Recuperación de reemplazo articular: dolor, rigidez, movilidad, "
-        "signos de trombosis o infección protésica.",
-    ),
-}
-
 PROTOCOL_POSTOP_DAY = 1
 
 
-def protocol_queries_for(procedure_scenario: ProcedureScenario) -> tuple[str, ...]:
-    """Build the multi-query set for a procedure scenario."""
-    specific = PROCEDURE_SPECIFIC_QUERIES.get(procedure_scenario, ())
+def protocol_queries_for(procedure_id: str) -> tuple[str, ...]:
+    """Build the multi-query set for a procedure."""
+    label = procedure_display_label(procedure_id)
+    specific = (
+        f"Complicaciones y cuidados postoperatorios específicos de {label}: "
+        "síntomas, signos de alarma, dolor, fiebre y criterios de urgencia.",
+    )
     return PROTOCOL_BASE_QUERIES + specific
 
 
@@ -64,7 +47,7 @@ def merge_retrieved_chunks(
 
 def retrieve_protocol_context(
     retriever: ContextualRetriever,
-    procedure_scenario: ProcedureScenario,
+    procedure_id: str,
     *,
     settings: Settings | None = None,
     top_k: int | None = None,
@@ -99,7 +82,7 @@ def retrieve_protocol_context(
             else resolved.protocol_retrieval_score_threshold
         )
 
-    queries = protocol_queries_for(procedure_scenario)
+    queries = protocol_queries_for(procedure_id)
     primary_query = queries[0]
     total_elapsed_ms = 0.0
     chunk_lists: list[list[RetrievedChunk]] = []
@@ -107,7 +90,7 @@ def retrieve_protocol_context(
     for query in queries:
         _enriched_query, chunks, elapsed_ms = retriever.retrieve(
             query,
-            procedure_scenario=procedure_scenario,
+            procedure_id=procedure_id,
             postop_day=PROTOCOL_POSTOP_DAY,
             top_k=resolved_per_query_top_k,
             score_threshold=resolved_score_threshold,

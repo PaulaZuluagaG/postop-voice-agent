@@ -12,6 +12,7 @@ from core.config import Settings, get_settings
 from core.exceptions import VectorStoreError
 from core.models import DocumentType, ProcedureScenario, SourceAggregate, TextChunk
 from core.retry import with_retry
+from core.scenarios import canonical_procedure_id, qdrant_filter_values
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,34 @@ class QdrantVectorStore:
 
         self._run("delete_by_content_hash", _delete)
 
+    def delete_by_procedure(self, procedure_id: str) -> None:
+        filter_values = qdrant_filter_values(canonical_procedure_id(procedure_id))
+
+        def _delete() -> None:
+            self._client.delete(
+                collection_name=self.collection_name,
+                points_selector=qmodels.FilterSelector(
+                    filter=qmodels.Filter(
+                        should=[
+                            qmodels.FieldCondition(
+                                key="procedure_id",
+                                match=qmodels.MatchValue(value=value),
+                            )
+                            for value in filter_values
+                        ]
+                        + [
+                            qmodels.FieldCondition(
+                                key="procedure_scenario",
+                                match=qmodels.MatchValue(value=value),
+                            )
+                            for value in filter_values
+                        ]
+                    )
+                ),
+            )
+
+        self._run("delete_by_procedure", _delete)
+
     def upsert_chunks(
         self,
         chunks: list[TextChunk],
@@ -149,12 +178,21 @@ class QdrantVectorStore:
         top_k = top_k or self._settings.retrieval_top_k
         score_threshold = score_threshold or self._settings.retrieval_score_threshold
 
+        filter_values = qdrant_filter_values(procedure_scenario)
         scenario_filter = qmodels.Filter(
-            must=[
+            should=[
+                qmodels.FieldCondition(
+                    key="procedure_id",
+                    match=qmodels.MatchValue(value=value),
+                )
+                for value in filter_values
+            ]
+            + [
                 qmodels.FieldCondition(
                     key="procedure_scenario",
-                    match=qmodels.MatchValue(value=procedure_scenario),
+                    match=qmodels.MatchValue(value=value),
                 )
+                for value in filter_values
             ]
         )
 
@@ -181,6 +219,9 @@ class QdrantVectorStore:
                 chunk_index=int(payload.get("chunk_index", 0)),
                 page_start=int(payload.get("page_start", 0)),
                 page_end=int(payload.get("page_end", 0)),
+                procedure_id=str(
+                    payload.get("procedure_id", payload.get("procedure_scenario", ""))
+                ),
                 procedure_scenario=ProcedureScenario(
                     str(payload.get("procedure_scenario", ProcedureScenario.OTHER.value))
                 ),
@@ -214,6 +255,12 @@ class QdrantVectorStore:
                         aggregates[source_id] = SourceAggregate(
                             source_id=source_id,
                             file_name=str(payload.get("file_name", "")),
+                            procedure_id=str(
+                                payload.get(
+                                    "procedure_id",
+                                    payload.get("procedure_scenario", ""),
+                                )
+                            ),
                             procedure_scenario=ProcedureScenario(
                                 str(
                                     payload.get("procedure_scenario", ProcedureScenario.OTHER.value)
@@ -231,6 +278,29 @@ class QdrantVectorStore:
             return sorted(aggregates.values(), key=lambda item: item.file_name.lower())
 
         return self._run("list_sources", _scroll)
+
+    def list_indexed_procedure_ids(self) -> list[str]:
+        def _scroll() -> list[str]:
+            procedure_ids: set[str] = set()
+            offset = None
+            while True:
+                points, offset = self._client.scroll(
+                    collection_name=self.collection_name,
+                    limit=256,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                for point in points:
+                    payload = point.payload or {}
+                    raw = payload.get("procedure_id") or payload.get("procedure_scenario")
+                    if raw:
+                        procedure_ids.add(canonical_procedure_id(str(raw)))
+                if offset is None:
+                    break
+            return sorted(procedure_ids)
+
+        return self._run("list_indexed_procedure_ids", _scroll)
 
     def list_indexed_scenarios(self) -> list[ProcedureScenario]:
         def _scroll() -> list[ProcedureScenario]:
@@ -258,16 +328,26 @@ class QdrantVectorStore:
 
     def set_protocol_payload(
         self,
-        procedure_scenario: ProcedureScenario,
+        procedure_id: str,
         protocol: dict[str, Any],
     ) -> int:
+        filter_values = qdrant_filter_values(canonical_procedure_id(procedure_id))
+
         def _set_payload() -> int:
             scenario_filter = qmodels.Filter(
-                must=[
+                should=[
+                    qmodels.FieldCondition(
+                        key="procedure_id",
+                        match=qmodels.MatchValue(value=value),
+                    )
+                    for value in filter_values
+                ]
+                + [
                     qmodels.FieldCondition(
                         key="procedure_scenario",
-                        match=qmodels.MatchValue(value=procedure_scenario.value),
+                        match=qmodels.MatchValue(value=value),
                     )
+                    for value in filter_values
                 ]
             )
             self._client.set_payload(
@@ -317,6 +397,7 @@ class QdrantVectorStore:
             "chunk_index": chunk.chunk_index,
             "page_start": chunk.page_start,
             "page_end": chunk.page_end,
+            "procedure_id": chunk.procedure_id,
             "procedure_scenario": chunk.procedure_scenario.value
             if hasattr(chunk.procedure_scenario, "value")
             else str(chunk.procedure_scenario),

@@ -8,10 +8,14 @@ from pathlib import Path
 from core.config import Settings, get_settings
 from core.exceptions import InsufficientTextError
 from core.models import IngestReport, ParsedDocument, ProcedureScenario
+from core.scenarios import normalize_procedure_id
 from knowledge.ingest.chunker import TokenChunker
 from knowledge.ingest.embedder import EmbeddingService
 from knowledge.ingest.pdf_parser import iter_pdf_files, parse_pdf
-from knowledge.protocol.generator import generate_protocols_for_indexed_procedures
+from knowledge.protocol.generator import (
+    generate_protocol_for_procedure,
+    generate_protocols_for_indexed_procedures,
+)
 from knowledge.store.qdrant_store import QdrantVectorStore
 
 logger = logging.getLogger(__name__)
@@ -74,7 +78,7 @@ class IngestPipeline:
                 logger.exception("Failed to index %s", pdf_path)
 
         report.total_chunks = sum(source.chunk_count for source in self._store.list_sources())
-        has_indexed_data = report.indexed_documents > 0 or self._store.list_indexed_scenarios()
+        has_indexed_data = report.indexed_documents > 0 or self._store.list_indexed_procedure_ids()
         if generate_protocols and has_indexed_data:
             report.protocol_generation = generate_protocols_for_indexed_procedures(
                 settings=self._settings,
@@ -97,16 +101,61 @@ class IngestPipeline:
         file_path: Path,
         *,
         procedure_scenario: ProcedureScenario | None = None,
+        procedure_id: str | None = None,
     ) -> ParsedDocument:
         document = parse_pdf(
             file_path,
             self._settings,
             procedure_scenario=procedure_scenario,
         )
+        if procedure_id is not None:
+            document = document.model_copy(
+                update={"procedure_id": normalize_procedure_id(procedure_id)}
+            )
         self._store.create_collection(recreate=False)
         self._store.delete_document_chunks(document.source_id)
         self._index_document(document)
         return document
+
+    def reindex_procedure(self, procedure_id: str) -> IngestReport:
+        """Re-index all PDFs for a single procedure and regenerate its protocol."""
+        procedure_id = normalize_procedure_id(procedure_id)
+        report = IngestReport()
+        self._store.delete_by_procedure(procedure_id)
+
+        procedure_dir = self._settings.textos_dir / procedure_id
+        if not procedure_dir.is_dir():
+            report.errors.append(f"Procedure folder not found: {procedure_dir}")
+            return report
+
+        for pdf_path in sorted(procedure_dir.glob("*.pdf")):
+            try:
+                document = parse_pdf(pdf_path, self._settings)
+                document = document.model_copy(update={"procedure_id": procedure_id})
+                self._index_document(document)
+                report.indexed_documents += 1
+            except InsufficientTextError:
+                report.skipped_no_text.append(str(pdf_path))
+            except Exception as exc:  # noqa: BLE001
+                report.errors.append(f"{pdf_path.name}: {exc}")
+                logger.exception("Failed to reindex %s", pdf_path)
+
+        report.total_chunks = sum(
+            source.chunk_count
+            for source in self._store.list_sources()
+            if source.procedure_id == procedure_id
+        )
+        if report.indexed_documents > 0:
+            try:
+                report.protocol_generation = generate_protocol_for_procedure(
+                    procedure_id,
+                    settings=self._settings,
+                    store=self._store,
+                    force=True,
+                )
+            except Exception as exc:  # noqa: BLE001
+                report.errors.append(f"protocol:{procedure_id}: {exc}")
+        return report
 
     def remove_document(self, source_id: str) -> None:
         self._store.delete_document_chunks(source_id)

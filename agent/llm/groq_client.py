@@ -15,8 +15,9 @@ from agent.llm.prompts import SYSTEM_PROMPT, build_opening_user_prompt, build_us
 from core.config import Settings, get_settings
 from core.exceptions import LLMError
 from core.groq_limiter import agent_groq_call_slot
-from core.models import ClinicalAxis, LLMTurnOutput, RetrievedChunk
+from core.models import LLMTurnOutput, RetrievedChunk
 from core.retry import with_groq_retry
+from knowledge.protocol.models import SymptomDefinition
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +38,9 @@ class GroqClient:
         patient_name: str,
         procedimiento: str,
         dia_postop: int,
-        ejes_cubiertos: set[ClinicalAxis],
-        ejes_pendientes: list[ClinicalAxis],
+        covered_symptom_ids: set[str],
+        pending_symptoms: list[SymptomDefinition],
+        alert_signs: list[str],
         puntaje_total: int,
         turno: int,
         max_turnos: int,
@@ -46,6 +48,7 @@ class GroqClient:
         accumulated_facts: str,
         retrieved_chunks: list[RetrievedChunk],
         reference_date: date | None = None,
+        current_focal_symptom: str | None = None,
     ) -> LLMTurnOutput:
         ref = reference_date or date.today()
         evidence_block = self._format_evidence(retrieved_chunks)
@@ -53,8 +56,9 @@ class GroqClient:
             patient_name=patient_name,
             procedimiento=procedimiento,
             dia_postop=dia_postop,
-            ejes_cubiertos=ejes_cubiertos,
-            ejes_pendientes=ejes_pendientes,
+            covered_symptom_ids=covered_symptom_ids,
+            pending_symptoms=pending_symptoms,
+            alert_signs=alert_signs,
             puntaje_total=puntaje_total,
             turno=turno,
             max_turnos=max_turnos,
@@ -63,6 +67,7 @@ class GroqClient:
             patient_text=patient_message,
             evidence_block=evidence_block,
             reference_date=ref.isoformat(),
+            current_focal_symptom=current_focal_symptom,
         )
 
         def _call() -> LLMTurnOutput:
@@ -79,8 +84,10 @@ class GroqClient:
         patient_name: str,
         procedimiento: str,
         dia_postop: int,
-        ejes_pendientes: list[ClinicalAxis],
+        pending_symptoms: list[SymptomDefinition],
+        alert_signs: list[str],
         has_procedure_evidence: bool,
+        uses_general_protocol: bool,
         retrieved_chunks: list[RetrievedChunk],
         reference_date: date | None = None,
     ) -> LLMTurnOutput:
@@ -90,8 +97,10 @@ class GroqClient:
             patient_name=patient_name,
             procedimiento=procedimiento,
             dia_postop=dia_postop,
-            ejes_pendientes=ejes_pendientes,
+            pending_symptoms=pending_symptoms,
+            alert_signs=alert_signs,
             has_procedure_evidence=has_procedure_evidence,
+            uses_general_protocol=uses_general_protocol,
             evidence_block=evidence_block,
             reference_date=ref.isoformat(),
         )
@@ -120,10 +129,45 @@ class GroqClient:
                 max_tokens=self._settings.groq_max_output_tokens,
                 response_format={"type": "json_object"},
             )
-        raw_text = response.choices[0].message.content or ""
-        payload = normalize_llm_turn_payload(self._parse_json(raw_text))
+
+        raw = response.choices[0].message.content or ""
+        payload = self._parse_json(raw)
+        payload = normalize_llm_turn_payload(payload)
         output = LLMTurnOutput.model_validate(payload)
-        return self._validate_sources(output, retrieved_chunks)
+        output = self._sanitize_sources(output, retrieved_chunks)
+        return output
+
+    @staticmethod
+    def _parse_json(raw: str) -> dict[str, Any]:
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+            cleaned = re.sub(r"\s*```$", "", cleaned)
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError as exc:
+            raise LLMError(f"Invalid JSON from Groq: {exc}") from exc
+        if not isinstance(parsed, dict):
+            raise LLMError("Groq response is not a JSON object")
+        return parsed
+
+    @staticmethod
+    def _validate_sources(
+        output: LLMTurnOutput,
+        retrieved_chunks: list[RetrievedChunk],
+    ) -> LLMTurnOutput:
+        return GroqClient._sanitize_sources(output, retrieved_chunks)
+
+    @staticmethod
+    def _sanitize_sources(
+        output: LLMTurnOutput,
+        retrieved_chunks: list[RetrievedChunk],
+    ) -> LLMTurnOutput:
+        allowed = {chunk.source_id for chunk in retrieved_chunks}
+        filtered = [source_id for source_id in output.fuentes if source_id in allowed]
+        if filtered != output.fuentes:
+            return output.model_copy(update={"fuentes": filtered})
+        return output
 
     @staticmethod
     def _format_evidence(chunks: list[RetrievedChunk]) -> str:
@@ -131,32 +175,6 @@ class GroqClient:
             return ""
         lines: list[str] = []
         for chunk in chunks:
-            header = (
-                f"[source_id={chunk.source_id} | {chunk.file_name} | "
-                f"p.{chunk.page_start}-{chunk.page_end}]"
-            )
-            lines.append(f"{header}\n{chunk.text[:700]}")
-        return "\n\n".join(lines)
-
-    @staticmethod
-    def _parse_json(raw_text: str) -> dict[str, Any]:
-        cleaned = raw_text.strip()
-        if cleaned.startswith("```"):
-            cleaned = re.sub(r"^```(?:json)?", "", cleaned).strip()
-            cleaned = re.sub(r"```$", "", cleaned).strip()
-        try:
-            return json.loads(cleaned)
-        except json.JSONDecodeError:
-            match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-            if not match:
-                raise
-            return json.loads(match.group(0))
-
-    @staticmethod
-    def _validate_sources(
-        output: LLMTurnOutput,
-        retrieved_chunks: list[RetrievedChunk],
-    ) -> LLMTurnOutput:
-        valid_ids = {chunk.source_id for chunk in retrieved_chunks}
-        filtered = [source_id for source_id in output.fuentes if source_id in valid_ids]
-        return output.model_copy(update={"fuentes": filtered})
+            excerpt = chunk.text[:500].replace("\n", " ")
+            lines.append(f"[{chunk.source_id}] (score={chunk.score:.2f}) {excerpt}")
+        return "\n".join(lines)

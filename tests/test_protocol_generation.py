@@ -108,6 +108,7 @@ def _sample_chunk(source_id: str = "doc_apendicitis_01") -> RetrievedChunk:
         chunk_index=0,
         page_start=1,
         page_end=1,
+        procedure_id="appendicitis",
         procedure_scenario=ProcedureScenario.APPENDICITIS,
         document_type=DocumentType.GUIDE,
         language="es",
@@ -173,18 +174,16 @@ def test_retrieve_protocol_context_uses_multi_query_and_configured_threshold() -
 
     _query, chunks, _elapsed_ms = retrieve_protocol_context(
         retriever,
-        ProcedureScenario.APPENDICITIS,
+        "appendicitis",
         settings=settings,
     )
 
-    assert retriever.retrieve.call_count == len(
-        protocol_queries_for(ProcedureScenario.APPENDICITIS)
-    )
+    assert retriever.retrieve.call_count == len(protocol_queries_for("appendicitis"))
     assert len(chunks) == 2
     _, kwargs = retriever.retrieve.call_args_list[0]
     assert kwargs["top_k"] == 5
     assert kwargs["score_threshold"] == 0.55
-    assert kwargs["procedure_scenario"] == ProcedureScenario.APPENDICITIS
+    assert kwargs["procedure_id"] == "appendicitis"
 
 
 def test_merge_retrieved_chunks_deduplicates_by_chunk_id() -> None:
@@ -377,7 +376,7 @@ def test_set_protocol_payload_uses_procedure_filter() -> None:
         store._run = lambda _name, fn: fn()
 
         updated = store.set_protocol_payload(
-            ProcedureScenario.APPENDICITIS,
+            "appendicitis",
             _sample_protocol_payload(),
         )
 
@@ -387,7 +386,7 @@ def test_set_protocol_payload_uses_procedure_filter() -> None:
 
 def test_generate_protocols_skips_existing(tmp_path: Path) -> None:
     store = MagicMock()
-    store.list_indexed_scenarios.return_value = [ProcedureScenario.APPENDICITIS]
+    store.list_indexed_procedure_ids.return_value = ["appendicitis"]
 
     retriever = MagicMock()
     llm = MagicMock()
@@ -399,7 +398,7 @@ def test_generate_protocols_skips_existing(tmp_path: Path) -> None:
     (settings.textos_dir / "appendicitis").mkdir()
     settings.protocol_skip_existing = True
 
-    existing = procedure_protocol_path(tmp_path, ProcedureScenario.APPENDICITIS)
+    existing = procedure_protocol_path(tmp_path, "appendicitis")
     existing.parent.mkdir(parents=True)
     existing.write_text("{}", encoding="utf-8")
 
@@ -418,7 +417,7 @@ def test_generate_protocols_skips_existing(tmp_path: Path) -> None:
 
 def test_generate_protocols_for_indexed_procedures(tmp_path: Path) -> None:
     store = MagicMock()
-    store.list_indexed_scenarios.return_value = [ProcedureScenario.APPENDICITIS]
+    store.list_indexed_procedure_ids.return_value = ["appendicitis"]
     store.set_protocol_payload.return_value = 4
 
     retriever = MagicMock()
@@ -499,7 +498,7 @@ def test_generate_protocol_for_procedure_falls_back_when_llm_fails(tmp_path: Pat
     settings.protocol_max_symptoms = 8
 
     protocol, _chunks, used_fallback = _generate_protocol_for_procedure(
-        procedure_scenario=ProcedureScenario.COLORECTAL_CANCER,
+        procedure_id="colorectal-cancer",
         resolved_settings=settings,
         resolved_retriever=retriever,
         resolved_llm=llm,
@@ -507,7 +506,7 @@ def test_generate_protocol_for_procedure_falls_back_when_llm_fails(tmp_path: Pat
 
     assert used_fallback is True
     assert len(protocol.symptoms) >= 3
-    assert protocol.procedure == "colorectal_cancer"
+    assert protocol.procedure == "colorectal-cancer"
 
 
 def test_generate_protocol_for_procedure_applies_general_fallback(tmp_path: Path) -> None:
@@ -539,7 +538,7 @@ def test_generate_protocol_for_procedure_applies_general_fallback(tmp_path: Path
     settings.protocol_max_symptoms = 8
 
     protocol, _chunks, used_fallback = _generate_protocol_for_procedure(
-        procedure_scenario=ProcedureScenario.CERVICAL_CANCER,
+        procedure_id="cervical-cancer",
         resolved_settings=settings,
         resolved_retriever=retriever,
         resolved_llm=llm,
@@ -547,15 +546,15 @@ def test_generate_protocol_for_procedure_applies_general_fallback(tmp_path: Path
 
     assert used_fallback is True
     assert len(protocol.symptoms) >= 3
-    assert protocol.procedure == "cervical_cancer"
+    assert protocol.procedure == "cervical-cancer"
     assert llm.generate_protocol_json.call_count == 2
 
 
 def test_generate_protocols_waits_between_llm_calls(tmp_path: Path, monkeypatch) -> None:
     store = MagicMock()
-    store.list_indexed_scenarios.return_value = [
-        ProcedureScenario.APPENDICITIS,
-        ProcedureScenario.CHOLECYSTITIS,
+    store.list_indexed_procedure_ids.return_value = [
+        "appendicitis",
+        "cholecystitis",
     ]
     store.set_protocol_payload.return_value = 1
 
@@ -605,9 +604,9 @@ def test_generate_protocols_stops_on_daily_gemini_quota(tmp_path: Path) -> None:
     from google.api_core.exceptions import ResourceExhausted
 
     store = MagicMock()
-    store.list_indexed_scenarios.return_value = [
-        ProcedureScenario.APPENDICITIS,
-        ProcedureScenario.CHOLECYSTITIS,
+    store.list_indexed_procedure_ids.return_value = [
+        "appendicitis",
+        "cholecystitis",
     ]
 
     retriever = MagicMock()

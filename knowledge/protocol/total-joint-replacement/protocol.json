@@ -1,23 +1,19 @@
 {
-  "procedure": "apendicectomia",
+  "procedure": "total_joint_replacement",
   "version": "1.0",
-  "generated_at": "2026-08-11T00:45:02.070377Z",
+  "generated_at": "2026-08-11T00:44:10.847363Z",
   "source_ids": [
-    "src_21ce22f530b67553",
-    "src_4435ca0e37ef9f56",
-    "src_547eb29ec3e9853d",
-    "src_634d3f06803af71f",
-    "src_682102ef98a79166",
-    "src_69feacc2fe4ffc6e",
-    "src_916a5e1fd1f6b274",
-    "src_e90004b51b62bc30",
-    "src_ef0690bc2d39256b",
-    "src_fae3b7f81bc44d28"
+    "src_28d7c6cca624c737",
+    "src_5feec87667c5ea4c",
+    "src_600c4fb9f2130913",
+    "src_8905a7bd7156639e",
+    "src_cb907f1069c1b1b7",
+    "src_fda19726d687965e"
   ],
   "symptoms": [
     {
       "id": "fiebre",
-      "question": "¿Ha tenido fiebre o su temperatura corporal ha superado los 38 °C (101 °F)?",
+      "question": "¿Ha tenido fiebre? ¿Cuál es su temperatura corporal medida en grados centígrados?",
       "type": "numeric",
       "levels": [
         {
@@ -40,14 +36,12 @@
         }
       ],
       "fuentes": [
-        "src_547eb29ec3e9853d",
-        "src_69feacc2fe4ffc6e",
-        "src_634d3f06803af71f"
+        "src_600c4fb9f2130913"
       ]
     },
     {
-      "id": "dolor_abdominal",
-      "question": "¿Cómo califica su dolor abdominal en una escala del 0 al 10?",
+      "id": "dolor_persistente",
+      "question": "¿Presenta dolor en la articulación o pierna que no cede después de tomar analgésicos? Evalúelo de 0 a 10.",
       "type": "numeric",
       "levels": [
         {
@@ -70,14 +64,13 @@
         }
       ],
       "fuentes": [
-        "src_547eb29ec3e9853d",
-        "src_69feacc2fe4ffc6e",
-        "src_634d3f06803af71f"
+        "src_600c4fb9f2130913",
+        "src_28d7c6cca624c737"
       ]
     },
     {
-      "id": "infeccion_herida",
-      "question": "¿Presenta enrojecimiento, calor, sangrado o salida de pus en la herida quirúrgica?",
+      "id": "signos_infeccion_herida",
+      "question": "¿Presenta supuración con pus, mal olor, enrojecimiento, hinchazón o ardor en la herida quirúrgica?",
       "type": "binary",
       "levels": [
         {
@@ -94,14 +87,13 @@
         }
       ],
       "fuentes": [
-        "src_547eb29ec3e9853d",
-        "src_69feacc2fe4ffc6e",
-        "src_634d3f06803af71f"
+        "src_600c4fb9f2130913",
+        "src_28d7c6cca624c737"
       ]
     },
     {
-      "id": "dehiscencia_herida",
-      "question": "¿Ha notado apertura de la herida o separación de los puntos de sutura?",
+      "id": "hinchazon_dolor_pantorrilla",
+      "question": "¿Tiene dolor, sensibilidad o hinchazón en la pantorrilla o en el muslo de cualquiera de las piernas?",
       "type": "binary",
       "levels": [
         {
@@ -118,36 +110,13 @@
         }
       ],
       "fuentes": [
-        "src_69feacc2fe4ffc6e",
-        "src_634d3f06803af71f"
+        "src_600c4fb9f2130913",
+        "src_28d7c6cca624c737"
       ]
     },
     {
-      "id": "nauseas_y_vomitos",
-      "question": "¿Ha presentado náuseas o vómitos persistentes que no se detienen?",
-      "type": "binary",
-      "levels": [
-        {
-          "min": 0.0,
-          "max": 0.0,
-          "points": 0,
-          "label": "verde"
-        },
-        {
-          "min": 1.0,
-          "max": 1.0,
-          "points": 8,
-          "label": "amarillo"
-        }
-      ],
-      "fuentes": [
-        "src_69feacc2fe4ffc6e",
-        "src_634d3f06803af71f"
-      ]
-    },
-    {
-      "id": "estrenimiento",
-      "question": "¿Tiene falta de deposiciones que no mejora aun con buena hidratación y fibra?",
+      "id": "entumecimiento_hormigueo",
+      "question": "¿Presenta entumecimiento u hormigueo de nueva aparición o en mayor proporción en la pierna afectada?",
       "type": "binary",
       "levels": [
         {
@@ -164,12 +133,12 @@
         }
       ],
       "fuentes": [
-        "src_634d3f06803af71f"
+        "src_600c4fb9f2130913"
       ]
     },
     {
-      "id": "diarrea",
-      "question": "¿Ha presentado diarrea con una duración mayor a 3 días?",
+      "id": "cambios_color_temperatura",
+      "question": "¿Ha notado cambios en el color o en la temperatura de la pierna afectada?",
       "type": "binary",
       "levels": [
         {
@@ -181,17 +150,17 @@
         {
           "min": 1.0,
           "max": 1.0,
-          "points": 8,
+          "points": 4,
           "label": "amarillo"
         }
       ],
       "fuentes": [
-        "src_634d3f06803af71f"
+        "src_600c4fb9f2130913"
       ]
     },
     {
-      "id": "dolor_hinchazon_piernas",
-      "question": "¿Tiene dolor o hinchazón en las piernas o en las pantorrillas?",
+      "id": "sangrado_o_hematomas",
+      "question": "¿Ha presentado hematomas con facilidad, hemorragia nasal o presencia de sangre en la orina o deposición?",
       "type": "binary",
       "levels": [
         {
@@ -208,12 +177,13 @@
         }
       ],
       "fuentes": [
-        "src_634d3f06803af71f"
+        "src_600c4fb9f2130913",
+        "src_28d7c6cca624c737"
       ]
     },
     {
-      "id": "dificultad_respiratoria",
-      "question": "¿Presenta dificultad para respirar o dolor en el pecho?",
+      "id": "dolor_toracico",
+      "question": "¿Presenta dolor torácico?",
       "type": "binary",
       "levels": [
         {
@@ -230,7 +200,29 @@
         }
       ],
       "fuentes": [
-        "src_634d3f06803af71f"
+        "src_600c4fb9f2130913"
+      ]
+    },
+    {
+      "id": "caida_o_trauma",
+      "question": "¿Ha sufrido algún golpe como consecuencia de una caída o una lesión?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 10,
+          "label": "rojo"
+        }
+      ],
+      "fuentes": [
+        "src_600c4fb9f2130913"
       ]
     }
   ],
@@ -240,14 +232,12 @@
     "rojo": 15
   },
   "alert_signs": [
-    "Fiebre mayor de 38 °C (101 °F) o escalofríos",
-    "Enrojecimiento, calor, sangrado o salida de pus en la herida quirúrgica",
-    "Apertura de la herida o separación de los puntos",
-    "Dolor abdominal persistente o que va aumentando sin respuesta a medicamentos",
-    "Náuseas o vómitos persistentes",
-    "Falta de deposiciones que no mejora con hidratación y fibra",
-    "Diarrea que dura más de 3 días",
-    "Dolor o hinchazón en las piernas o pantorrillas",
-    "Dificultad para respirar o dolor en el pecho"
+    "Fiebre superior a 38 °C",
+    "Dolor torácico",
+    "Supuración con pus, mal olor o enrojecimiento en el lugar de la herida",
+    "Dolor en la pantorrilla o muslo, sensibilidad o hinchazón en las piernas",
+    "Dolor que no cede después de tomar un analgésico",
+    "Presencia de sangre en la orina, deposición o hemorragia nasal",
+    "Golpe como consecuencia de una caída o lesión"
   ]
 }

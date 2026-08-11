@@ -2,7 +2,7 @@ from agent.decision.procedure_evidence import has_procedure_specific_evidence
 from core.models import DocumentType, ProcedureScenario, RetrievedChunk
 
 
-def _chunk(*, scenario: ProcedureScenario) -> RetrievedChunk:
+def _chunk(*, scenario: ProcedureScenario, procedure_id: str | None = None) -> RetrievedChunk:
     return RetrievedChunk(
         chunk_id="chunk-1",
         source_id="src_test",
@@ -11,6 +11,7 @@ def _chunk(*, scenario: ProcedureScenario) -> RetrievedChunk:
         chunk_index=0,
         page_start=1,
         page_end=1,
+        procedure_id=procedure_id or scenario.value,
         procedure_scenario=scenario,
         document_type=DocumentType.GUIDE,
         language="es",
@@ -20,8 +21,15 @@ def _chunk(*, scenario: ProcedureScenario) -> RetrievedChunk:
 
 
 def test_has_procedure_specific_evidence_when_matching_chunk_exists() -> None:
-    chunks = [_chunk(scenario=ProcedureScenario.APPENDICITIS)]
-    assert has_procedure_specific_evidence(chunks, ProcedureScenario.APPENDICITIS) is True
+    chunks = [_chunk(scenario=ProcedureScenario.APPENDICITIS, procedure_id="appendicitis")]
+    assert (
+        has_procedure_specific_evidence(
+            chunks,
+            ProcedureScenario.APPENDICITIS,
+            procedure_id="appendicitis",
+        )
+        is True
+    )
 
 
 def test_has_procedure_specific_evidence_false_for_other_without_chunks() -> None:
@@ -34,8 +42,15 @@ def test_has_procedure_specific_evidence_true_for_other_with_chunks() -> None:
 
 
 def test_has_procedure_specific_evidence_false_when_scenario_differs() -> None:
-    chunks = [_chunk(scenario=ProcedureScenario.CHOLECYSTITIS)]
-    assert has_procedure_specific_evidence(chunks, ProcedureScenario.APPENDICITIS) is False
+    chunks = [_chunk(scenario=ProcedureScenario.CHOLECYSTITIS, procedure_id="cholecystitis")]
+    assert (
+        has_procedure_specific_evidence(
+            chunks,
+            ProcedureScenario.APPENDICITIS,
+            procedure_id="appendicitis",
+        )
+        is False
+    )
 
 
 def test_has_procedure_specific_evidence_false_when_empty() -> None:

@@ -10,7 +10,7 @@ import pymupdf
 from core.config import Settings, get_settings
 from core.exceptions import InsufficientTextError
 from core.models import DocumentType, ParsedDocument, ParsedPage, ProcedureScenario
-from core.scenarios import map_folder_to_scenario
+from core.scenarios import resolve_folder_scenario, scenario_to_procedure_id
 from knowledge.ingest.pdf_ocr import extract_page_text
 from knowledge.text_utils import compute_content_hash, normalize_clinical_text
 
@@ -65,7 +65,9 @@ def parse_pdf(
     settings = settings or get_settings()
     file_path = file_path.resolve()
     if procedure_scenario is None:
-        procedure_scenario = map_folder_to_scenario(file_path.parent.name)
+        procedure_id, procedure_scenario = resolve_folder_scenario(file_path.parent.name)
+    else:
+        procedure_id = scenario_to_procedure_id(procedure_scenario)
     document_type = _infer_document_type(file_path.name)
 
     pages: list[ParsedPage] = []
@@ -92,6 +94,7 @@ def parse_pdf(
         source_id=_build_source_id(file_path),
         file_path=str(file_path),
         file_name=file_path.name,
+        procedure_id=procedure_id,
         procedure_scenario=procedure_scenario,
         document_type=document_type,
         language=_detect_language(full_text),
