@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 import time
 
 from core.config import Settings, get_settings
+from core.exceptions import VectorStoreError
 from core.models import RetrievedChunk
 from core.scenarios import FOLDER_TO_SCENARIO, procedure_display_label
 from knowledge.ingest.embedder import EmbeddingService
 from knowledge.store.qdrant_store import QdrantVectorStore
+
+logger = logging.getLogger(__name__)
 
 
 class ContextualRetriever:
@@ -66,13 +70,22 @@ class ContextualRetriever:
             postop_day=postop_day,
             conversation_context=conversation_context,
         )
-        query_vector = self._embedder.embed_texts([query])[0]
-        hits = self._store.search(
-            query_vector,
-            procedure_scenario=procedure_id,
-            top_k=top_k,
-            score_threshold=score_threshold,
-        )
+        try:
+            query_vector = self._embedder.embed_texts([query])[0]
+            hits = self._store.search(
+                query_vector,
+                procedure_scenario=procedure_id,
+                top_k=top_k,
+                score_threshold=score_threshold,
+            )
+        except VectorStoreError as exc:
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            logger.warning(
+                "RAG no disponible (%s); continuando sin evidencia recuperada.",
+                exc,
+            )
+            return query, [], elapsed_ms
+
         retrieved = [RetrievedChunk(**chunk.model_dump(), score=score) for chunk, score in hits]
         elapsed_ms = (time.perf_counter() - start) * 1000
         return query, retrieved, elapsed_ms

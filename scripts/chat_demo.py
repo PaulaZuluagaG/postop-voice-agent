@@ -94,10 +94,9 @@ def _chat_loop(
     if session.patient_id:
         print(f"Paciente: {session.patient_name} ({session.patient_id})")
     print(f"Tipo de cirugía: {registration.procedure_label}")
-    if session.surgery_date:
-        print(f"Fecha cirugía: {session.surgery_date} | Día postop: {session.postop_day}")
+    print(f"Día postop: {session.postop_day}")
     print(f"Fuentes usadas: {len(summary.sources_used)}")
-    print(f"Log: logs/calls/{summary.call_id}.jsonl")
+    print(f"Log: logs/calls/{summary.call_id}/summary/events.json")
     return 0
 
 
@@ -136,6 +135,7 @@ def run_registered_chat(registration: PatientRegistration) -> int:
         procedure_scenario=registration.procedure_scenario,
         patient_name=registration.patient_name,
         patient_id=registration.patient_id,
+        postop_day=registration.postop_day,
         surgery_date=registration.surgery_date,
     )
 
@@ -143,7 +143,7 @@ def run_registered_chat(registration: PatientRegistration) -> int:
     print(
         f"Paciente: {registration.patient_name} ({registration.patient_id}) | "
         f"Tipo de cirugía: {registration.procedure_label} | "
-        f"Cirugía: {registration.surgery_date} | Día postop: {session.postop_day}"
+        f"Día postop: {session.postop_day}"
     )
     print("Responda solo a las preguntas del agente. Comandos: 'salir' para cerrar.\n")
     opening = orchestrator.begin_triage(session.call_id)

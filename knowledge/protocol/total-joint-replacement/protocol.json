@@ -1,7 +1,7 @@
 {
   "procedure": "total_joint_replacement",
   "version": "1.0",
-  "generated_at": "2026-08-11T00:44:10.847363Z",
+  "generated_at": "2026-08-12T02:04:23.917304Z",
   "source_ids": [
     "src_28d7c6cca624c737",
     "src_5feec87667c5ea4c",
@@ -13,7 +13,7 @@
   "symptoms": [
     {
       "id": "fiebre",
-      "question": "¿Ha tenido fiebre? ¿Cuál es su temperatura corporal medida en grados centígrados?",
+      "question": "¿Tiene fiebre o cuál ha sido su temperatura corporal máxima registrada hoy?",
       "type": "numeric",
       "levels": [
         {
@@ -40,8 +40,8 @@
       ]
     },
     {
-      "id": "dolor_persistente",
-      "question": "¿Presenta dolor en la articulación o pierna que no cede después de tomar analgésicos? Evalúelo de 0 a 10.",
+      "id": "dolor_intenso",
+      "question": "En una escala del 0 al 10, ¿qué tan intenso es el dolor que siente y que no cede incluso después de tomar el analgésico?",
       "type": "numeric",
       "levels": [
         {
@@ -64,13 +64,12 @@
         }
       ],
       "fuentes": [
-        "src_600c4fb9f2130913",
-        "src_28d7c6cca624c737"
+        "src_600c4fb9f2130913"
       ]
     },
     {
-      "id": "signos_infeccion_herida",
-      "question": "¿Presenta supuración con pus, mal olor, enrojecimiento, hinchazón o ardor en la herida quirúrgica?",
+      "id": "infeccion_herida",
+      "question": "¿Presenta supuración con pus, mal olor, enrojecimiento, hinchazón o ardor en la herida operatoria?",
       "type": "binary",
       "levels": [
         {
@@ -87,13 +86,12 @@
         }
       ],
       "fuentes": [
-        "src_600c4fb9f2130913",
-        "src_28d7c6cca624c737"
+        "src_600c4fb9f2130913"
       ]
     },
     {
-      "id": "hinchazon_dolor_pantorrilla",
-      "question": "¿Tiene dolor, sensibilidad o hinchazón en la pantorrilla o en el muslo de cualquiera de las piernas?",
+      "id": "dolor_hinchazon_pantorrilla",
+      "question": "¿Siente dolor, sensibilidad o hinchazón en la pantorrilla o en el muslo de cualquiera de las piernas?",
       "type": "binary",
       "levels": [
         {
@@ -105,18 +103,17 @@
         {
           "min": 1.0,
           "max": 1.0,
-          "points": 10,
-          "label": "rojo"
+          "points": 8,
+          "label": "amarillo"
         }
       ],
       "fuentes": [
-        "src_600c4fb9f2130913",
-        "src_28d7c6cca624c737"
+        "src_600c4fb9f2130913"
       ]
     },
     {
       "id": "entumecimiento_hormigueo",
-      "question": "¿Presenta entumecimiento u hormigueo de nueva aparición o en mayor proporción en la pierna afectada?",
+      "question": "¿Presenta entumecimiento de nueva aparición o un aumento del hormigueo en la pierna operada?",
       "type": "binary",
       "levels": [
         {
@@ -137,30 +134,8 @@
       ]
     },
     {
-      "id": "cambios_color_temperatura",
-      "question": "¿Ha notado cambios en el color o en la temperatura de la pierna afectada?",
-      "type": "binary",
-      "levels": [
-        {
-          "min": 0.0,
-          "max": 0.0,
-          "points": 0,
-          "label": "verde"
-        },
-        {
-          "min": 1.0,
-          "max": 1.0,
-          "points": 4,
-          "label": "amarillo"
-        }
-      ],
-      "fuentes": [
-        "src_600c4fb9f2130913"
-      ]
-    },
-    {
-      "id": "sangrado_o_hematomas",
-      "question": "¿Ha presentado hematomas con facilidad, hemorragia nasal o presencia de sangre en la orina o deposición?",
+      "id": "sangrado_hemorragia",
+      "question": "¿Ha presentado hematomas con facilidad, sangrado nasal o presencia de sangre en la orina o en las deposiciones?",
       "type": "binary",
       "levels": [
         {
@@ -177,13 +152,12 @@
         }
       ],
       "fuentes": [
-        "src_600c4fb9f2130913",
-        "src_28d7c6cca624c737"
+        "src_600c4fb9f2130913"
       ]
     },
     {
       "id": "dolor_toracico",
-      "question": "¿Presenta dolor torácico?",
+      "question": "¿Siente dolor en el pecho o dolor torácico?",
       "type": "binary",
       "levels": [
         {
@@ -204,8 +178,8 @@
       ]
     },
     {
-      "id": "caida_o_trauma",
-      "question": "¿Ha sufrido algún golpe como consecuencia de una caída o una lesión?",
+      "id": "caida_o_golpe",
+      "question": "¿Ha sufrido algún golpe o caída recientemente?",
       "type": "binary",
       "levels": [
         {
@@ -217,8 +191,8 @@
         {
           "min": 1.0,
           "max": 1.0,
-          "points": 10,
-          "label": "rojo"
+          "points": 8,
+          "label": "amarillo"
         }
       ],
       "fuentes": [
@@ -232,12 +206,28 @@
     "rojo": 15
   },
   "alert_signs": [
-    "Fiebre superior a 38 °C",
+    "Fiebre con temperatura superior a 38 °C",
     "Dolor torácico",
-    "Supuración con pus, mal olor o enrojecimiento en el lugar de la herida",
-    "Dolor en la pantorrilla o muslo, sensibilidad o hinchazón en las piernas",
-    "Dolor que no cede después de tomar un analgésico",
-    "Presencia de sangre en la orina, deposición o hemorragia nasal",
-    "Golpe como consecuencia de una caída o lesión"
+    "Supuración con pus, mal olor o enrojecimiento en la herida operatoria",
+    "Dolor, sensibilidad o hinchazón en la pantorrilla o muslo",
+    "Presencia de sangre en la orina o en las deposiciones",
+    "Entumecimiento o hormigueo de nueva aparición en la pierna afectada"
+  ],
+  "risk_factors": [
+    {
+      "id": "osteoartritis",
+      "label": "Osteoartritis",
+      "fuentes": [
+        "src_5feec87667c5ea4c",
+        "src_28d7c6cca624c737"
+      ]
+    },
+    {
+      "id": "diabetes_tipo_2",
+      "label": "Diabetes tipo 2",
+      "fuentes": [
+        "src_5feec87667c5ea4c"
+      ]
+    }
   ]
 }

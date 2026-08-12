@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from google.api_core.exceptions import GoogleAPIError, ResourceExhausted
 
 from api.auth import require_admin_token
-from api.schemas import DocumentItem, ProcedureSuggestion, ProcedureTypeOption
+from api.schemas import CallListItem, DocumentItem, ProcedureSuggestion, ProcedureTypeOption
+from api.services.calls import CallLogService
 from api.services.documents import (
     DocumentNotFoundError,
     DocumentService,
@@ -16,12 +17,17 @@ from api.services.documents import (
     PendingUploadNotFoundError,
     get_document_service,
 )
-from core.exceptions import InsufficientTextError, LLMError, PostOpError
+from core.exceptions import DuplicateDocumentError, InsufficientTextError, LLMError, PostOpError
+from core.models import CallSummary
 from core.retry import gemini_is_daily_quota_error
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["admin"])
+
+
+def get_call_log_service() -> CallLogService:
+    return CallLogService()
 
 
 def _gemini_error_detail(exc: Exception) -> str:
@@ -74,6 +80,8 @@ async def analyze_document(
     file_name, file_bytes = await _read_pdf_upload(file)
     try:
         return service.analyze_document(file_name=file_name, file_bytes=file_bytes)
+    except DuplicateDocumentError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except InsufficientTextError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
@@ -101,6 +109,7 @@ async def confirm_document(
     temp_id: str = Form(...),
     procedure_id: str = Form(...),
     file_name: str = Form(...),
+    procedure_label: str = Form(""),
     _: None = Depends(require_admin_token),
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentItem:
@@ -109,7 +118,10 @@ async def confirm_document(
             temp_id=temp_id.strip(),
             procedure_id=procedure_id.strip(),
             file_name=file_name.strip(),
+            procedure_label=procedure_label.strip() or None,
         )
+    except DuplicateDocumentError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except PendingUploadNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except LLMError as exc:
@@ -143,6 +155,8 @@ async def upload_document(
             file_bytes=file_bytes,
             procedure_id=procedure_type.strip(),
         )
+    except DuplicateDocumentError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except DocumentValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
@@ -195,3 +209,27 @@ async def _read_pdf_upload(file: UploadFile) -> tuple[str, bytes]:
             detail="El archivo PDF está vacío.",
         )
     return file_name, file_bytes
+
+
+@router.get("/calls", response_model=list[CallListItem])
+def list_recent_calls(
+    limit: int = 50,
+    _: None = Depends(require_admin_token),
+    service: CallLogService = Depends(get_call_log_service),
+) -> list[CallListItem]:
+    return [CallListItem.model_validate(item) for item in service.list_recent_calls(limit=limit)]
+
+
+@router.get("/calls/{call_id}", response_model=CallSummary)
+def get_call_summary(
+    call_id: str,
+    _: None = Depends(require_admin_token),
+    service: CallLogService = Depends(get_call_log_service),
+) -> CallSummary:
+    summary = service.get_call_summary(call_id)
+    if summary is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Llamada no encontrada: {call_id}",
+        )
+    return summary

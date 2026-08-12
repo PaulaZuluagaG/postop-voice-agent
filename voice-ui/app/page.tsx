@@ -10,7 +10,7 @@ export default function Page() {
   return (
     <div className="mx-auto min-h-dvh w-full max-w-md bg-background">
       {patient ? (
-        <PatientDashboard patient={patient} onCallEnded={() => setPatient(null)} />
+        <PatientDashboard patient={patient} onGoHome={() => setPatient(null)} />
       ) : (
         <IntakeForm onStart={setPatient} />
       )}

@@ -1,26 +1,13 @@
 "use client"
 
-import { Mic, PhoneOff, Stethoscope, CalendarDays, User } from "lucide-react"
+import { Mic, PhoneOff, Stethoscope, CalendarDays, User, Home, PhoneCall, ClipboardList } from "lucide-react"
 
 import type { PatientData } from "./intake-form"
 import { Transcript } from "./transcript"
 import { Waveform } from "./waveform"
+import { Button } from "@/components/ui/button"
+import { decisionLabelEs, formatSymptoms, type CallSummary } from "@/lib/call-summary"
 import { useVoiceSession } from "@/lib/use-voice-session"
-
-function formatDate(iso: string) {
-  if (!iso) return "—"
-  const d = new Date(iso + "T00:00:00")
-  return d.toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })
-}
-
-function postopDay(iso: string) {
-  if (!iso) return null
-  const surgery = new Date(iso + "T00:00:00")
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const diff = Math.floor((today.getTime() - surgery.getTime()) / 86_400_000)
-  return diff >= 0 ? diff : null
-}
 
 function procedureLabel(patient: PatientData) {
   return patient.procedureLabel || patient.procedure
@@ -28,16 +15,27 @@ function procedureLabel(patient: PatientData) {
 
 export function PatientDashboard({
   patient,
-  onCallEnded,
+  onGoHome,
 }: {
   patient: PatientData
-  onCallEnded?: () => void
+  onGoHome?: () => void
 }) {
-  const { inCall, connecting, speaker, messages, error, startCall, endCall } =
-    useVoiceSession(patient, onCallEnded)
+  const {
+    inCall,
+    callEnded,
+    connecting,
+    speaker,
+    messages,
+    error,
+    callSummary,
+    summaryLoading,
+    startCall,
+    endCall,
+  } = useVoiceSession(patient)
 
-  const day = postopDay(patient.surgeryDate)
+  const day = patient.postopDay
   const active = inCall || connecting
+  const showEndedScreen = callEnded && !inCall && !connecting
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -56,10 +54,22 @@ export function PatientDashboard({
           </div>
           <span className="flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1">
             <span className="relative flex size-2">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-              <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+              {showEndedScreen ? (
+                <span className="relative inline-flex size-2 rounded-full bg-muted-foreground/50" />
+              ) : (
+                <>
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+                  <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+                </>
+              )}
             </span>
-            <span className="text-xs font-medium text-emerald-700">En línea</span>
+            <span
+              className={`text-xs font-medium ${
+                showEndedScreen ? "text-muted-foreground" : "text-emerald-700"
+              }`}
+            >
+              {showEndedScreen ? "Llamada finalizada" : "En línea"}
+            </span>
           </span>
         </div>
       </header>
@@ -75,60 +85,88 @@ export function PatientDashboard({
           <StatusItem
             icon={<CalendarDays className="size-4" />}
             label="Día postop"
-            value={day !== null ? `Día ${day}` : formatDate(patient.surgeryDate)}
+            value={day ? `Día ${day}` : "—"}
           />
         </section>
 
         <section className="flex flex-1 flex-col items-center justify-center gap-8 rounded-3xl border border-border bg-card px-6 py-10 shadow-sm">
-          <div className="text-center">
-            <p className="text-sm font-medium text-muted-foreground">
-              {connecting
-                ? "Conectando con María…"
-                : inCall
-                  ? speaker === "agent"
-                    ? "María está hablando…"
-                    : speaker === "patient"
-                      ? "Escuchando al paciente…"
-                      : "Llamada en curso"
-                  : "Toca para iniciar tu revisión de hoy"}
-            </p>
-            {error && (
-              <p className="mt-2 text-sm font-medium text-destructive text-pretty">{error}</p>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={inCall ? endCall : startCall}
-            disabled={connecting}
-            aria-label={inCall ? "Finalizar llamada" : "Iniciar llamada"}
-            className={`relative flex size-40 items-center justify-center rounded-full text-primary-foreground shadow-xl transition-all active:scale-95 disabled:cursor-wait disabled:opacity-80 ${
-              inCall
-                ? "bg-destructive shadow-destructive/30 hover:bg-destructive/90"
-                : "bg-primary shadow-primary/30 hover:bg-primary/90"
-            }`}
-          >
-            {inCall && (
-              <>
-                <span className="absolute inset-0 animate-ping rounded-full bg-destructive/30" />
-                <span className="absolute -inset-3 animate-pulse rounded-full border-2 border-destructive/20" />
-              </>
-            )}
-            <span className="relative flex flex-col items-center gap-2">
-              {inCall ? (
-                <PhoneOff className="size-11" aria-hidden="true" />
-              ) : (
-                <Mic className="size-11" aria-hidden="true" />
-              )}
-              <span className="text-sm font-semibold">
-                {connecting ? "Conectando…" : inCall ? "Finalizar" : "Iniciar"}
+          {showEndedScreen ? (
+            <div className="flex w-full max-w-sm flex-col items-center gap-6 text-center">
+              <span className="flex size-20 items-center justify-center rounded-full bg-secondary text-primary">
+                <PhoneCall className="size-10" aria-hidden="true" />
               </span>
-            </span>
-          </button>
+              <div className="space-y-2">
+                <h2 className="text-lg font-semibold text-foreground">Llamada terminada</h2>
+                <p className="text-sm leading-relaxed text-muted-foreground text-pretty">
+                  Gracias por completar su seguimiento de hoy. Puede revisar la conversación
+                  abajo y volver al inicio cuando lo desee.
+                </p>
+              </div>
 
-          <div className="w-full max-w-sm">
-            <Waveform active={active} speaker={speaker} />
-          </div>
+              <ClinicalSummaryCard
+                patient={patient}
+                summary={callSummary}
+                loading={summaryLoading}
+              />
+
+              <Button type="button" size="lg" className="h-11 px-6" onClick={onGoHome}>
+                <Home className="size-4" aria-hidden="true" />
+                Volver al inicio
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="text-center">
+                <p className="text-sm font-medium text-muted-foreground">
+                  {connecting
+                    ? "Conectando con María…"
+                    : inCall
+                      ? speaker === "agent"
+                        ? "María está hablando…"
+                        : speaker === "patient"
+                          ? "Escuchando al paciente…"
+                          : "Llamada en curso"
+                      : "Toca para iniciar tu revisión de hoy"}
+                </p>
+                {error && (
+                  <p className="mt-2 text-sm font-medium text-destructive text-pretty">{error}</p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={inCall ? () => void endCall() : startCall}
+                disabled={connecting}
+                aria-label={inCall ? "Finalizar llamada" : "Iniciar llamada"}
+                className={`relative flex size-40 items-center justify-center rounded-full text-primary-foreground shadow-xl transition-all active:scale-95 disabled:cursor-wait disabled:opacity-80 ${
+                  inCall
+                    ? "bg-destructive shadow-destructive/30 hover:bg-destructive/90"
+                    : "bg-primary shadow-primary/30 hover:bg-primary/90"
+                }`}
+              >
+                {inCall && (
+                  <>
+                    <span className="absolute inset-0 animate-ping rounded-full bg-destructive/30" />
+                    <span className="absolute -inset-3 animate-pulse rounded-full border-2 border-destructive/20" />
+                  </>
+                )}
+                <span className="relative flex flex-col items-center gap-2">
+                  {inCall ? (
+                    <PhoneOff className="size-11" aria-hidden="true" />
+                  ) : (
+                    <Mic className="size-11" aria-hidden="true" />
+                  )}
+                  <span className="text-sm font-semibold">
+                    {connecting ? "Conectando…" : inCall ? "Finalizar" : "Iniciar"}
+                  </span>
+                </span>
+              </button>
+
+              <div className="w-full max-w-sm">
+                <Waveform active={active} speaker={speaker} />
+              </div>
+            </>
+          )}
         </section>
 
         <Transcript messages={messages} />
@@ -138,6 +176,79 @@ export function PatientDashboard({
           urgencias.
         </p>
       </main>
+    </div>
+  )
+}
+
+function ClinicalSummaryCard({
+  patient,
+  summary,
+  loading,
+}: {
+  patient: PatientData
+  summary: CallSummary | null
+  loading: boolean
+}) {
+  const procedure = summary?.custom_procedure || patient.procedureLabel || patient.procedure
+  const postopDayLabel =
+    summary?.postop_day !== undefined ? `Día ${summary.postop_day}` : "—"
+  const symptoms = summary ? formatSymptoms(summary.symptoms_reported) : "—"
+  const decision = summary ? decisionLabelEs(summary.decision_label) : "—"
+  const nextStep = summary?.next_steps || "—"
+
+  const decisionTone =
+    summary?.decision_label === "rojo"
+      ? "border-rose-200 bg-rose-50 text-rose-800"
+      : summary?.decision_label === "amarillo"
+        ? "border-amber-200 bg-amber-50 text-amber-900"
+        : "border-emerald-200 bg-emerald-50 text-emerald-800"
+
+  return (
+    <section className="w-full max-w-md rounded-2xl border border-border bg-card p-4 text-left shadow-sm">
+      <div className="mb-3 flex items-center gap-2">
+        <ClipboardList className="size-4 text-primary" aria-hidden="true" />
+        <h3 className="text-sm font-semibold text-foreground">Resumen para su equipo de salud</h3>
+      </div>
+
+      {loading && !summary ? (
+        <p className="text-sm text-muted-foreground">Generando resumen clínico…</p>
+      ) : summary ? (
+        <div className="space-y-3 text-sm">
+          <SummaryRow label="Procedimiento" value={procedure} />
+          <SummaryRow label="Día postop" value={postopDayLabel} />
+          <SummaryRow label="Síntomas" value={symptoms} />
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Decisión
+            </p>
+            <p
+              className={`mt-1 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${decisionTone}`}
+            >
+              {decision}
+            </p>
+          </div>
+          <SummaryRow label="Próximo paso" value={nextStep} />
+          {summary.clinical_summary ? (
+            <p className="border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground text-pretty">
+              {summary.clinical_summary}
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          El resumen clínico no está disponible todavía. Su equipo puede consultarlo en la consola
+          de administración.
+        </p>
+      )}
+    </section>
+  )
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-0.5 leading-snug text-foreground text-pretty">{value}</p>
     </div>
   )
 }

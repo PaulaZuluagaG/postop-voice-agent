@@ -4,7 +4,7 @@ from agent.decision.disclaimer_policy import (
     patient_seeks_medical_information,
     should_replace_with_disclaimer,
 )
-from core.models import ClinicalAxis, ClinicalFacts, LLMTurnOutput, ResponseCategory
+from core.models import LLMTurnOutput, ResponseCategory
 
 
 def test_patient_seeks_medical_information_detects_treatment_questions() -> None:
@@ -29,9 +29,8 @@ def test_llm_text_contains_prescriptive_advice() -> None:
 def test_should_not_disclaimer_for_wound_triage_answer() -> None:
     llm_output = LLMTurnOutput(
         categoria=ResponseCategory.RESPUESTA_VALIDA,
-        foco=ClinicalAxis.HERIDA,
+        foco_sintoma="infeccion_herida",
         evidencia_suficiente=False,
-        hechos=ClinicalFacts(),
         texto_paciente="Me alegra saber que su herida está sanando bien.",
         pregunta="¿Ha podido comer o beber algo?",
         fuentes=[],
@@ -42,9 +41,9 @@ def test_should_not_disclaimer_for_wound_triage_answer() -> None:
 def test_should_not_disclaimer_for_numeric_pain_answer() -> None:
     llm_output = LLMTurnOutput(
         categoria=ResponseCategory.RESPUESTA_VALIDA,
-        foco=ClinicalAxis.DOLOR,
+        foco_sintoma="dolor_abdominal",
         evidencia_suficiente=False,
-        hechos=ClinicalFacts(dolor_0_10=4.0),
+        sintomas={"dolor_abdominal": 4.0},
         texto_paciente="Entiendo que siente un dolor de 4.",
         pregunta="¿Ha notado cambios en la herida?",
         fuentes=[],
@@ -55,9 +54,7 @@ def test_should_not_disclaimer_for_numeric_pain_answer() -> None:
 def test_should_disclaimer_for_ungrounded_treatment_question() -> None:
     llm_output = LLMTurnOutput(
         categoria=ResponseCategory.RESPUESTA_VALIDA,
-        foco=ClinicalAxis.NINGUNO,
         evidencia_suficiente=False,
-        hechos=ClinicalFacts(),
         texto_paciente="Debe tomar antibióticos específicos.",
         pregunta="¿Qué síntoma le preocupa más?",
         fuentes=[],
@@ -90,8 +87,7 @@ def test_should_not_disclaimer_when_grounded() -> None:
 def test_is_triage_symptom_exchange_for_qualitative_answer() -> None:
     llm_output = LLMTurnOutput(
         categoria=ResponseCategory.RESPUESTA_VALIDA,
-        foco=ClinicalAxis.HERIDA,
-        hechos=ClinicalFacts(),
+        foco_sintoma="infeccion_herida",
         texto_paciente="Gracias.",
         pregunta="¿Ha comido?",
     )

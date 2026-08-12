@@ -100,7 +100,7 @@ def _print_call_banner(session: VoiceSession) -> None:
     print(
         f"Paciente: {registration.patient_name} ({registration.patient_id}) | "
         f"Tipo de cirugía: {registration.procedure_label} | "
-        f"Cirugía: {registration.surgery_date} | Día postop: {call_state.postop_day} | "
+        f"Día postop: {call_state.postop_day} | "
         f"Modo: {session.mode}"
     )
     print("Responda solo a las preguntas del agente. Comandos: 'salir' para cerrar.\n")
@@ -121,7 +121,7 @@ async def _run_session(session: VoiceSession) -> int:
     print(f"Severidad: {summary.severity.value}")
     print(f"Alerta: {summary.alert_triggered}")
     print(f"Turnos: {summary.turn_count}")
-    print(f"Log: logs/calls/{summary.call_id}.jsonl")
+    print(f"Log: logs/calls/{summary.call_id}/summary/events.json")
     return 0
 
 

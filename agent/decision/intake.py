@@ -138,3 +138,17 @@ def compute_postop_day(
     else:
         parsed = surgery_date
     return max(1, (ref - parsed).days + 1)
+
+
+POSTOP_TIMEPOINTS: tuple[int, ...] = (1, 3, 7, 14)
+
+
+def parse_postop_timepoint(value: object) -> int:
+    """Validate a postoperative day from the intake UI (1, 3, 7 or 14)."""
+    try:
+        day = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Día postoperatorio inválido.") from exc
+    if day not in POSTOP_TIMEPOINTS:
+        raise ValueError(f"Día postoperatorio inválido: {day}. Use 1, 3, 7 o 14.")
+    return day

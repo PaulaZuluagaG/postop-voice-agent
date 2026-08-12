@@ -1,7 +1,7 @@
 {
-  "procedure": "colorectal_cancer_surgery",
+  "procedure": "colorectal-cancer",
   "version": "1.0",
-  "generated_at": "2026-08-11T00:43:36.999507Z",
+  "generated_at": "2026-08-12T02:03:36.671626Z",
   "source_ids": [
     "src_36987cc1f902f9cd",
     "src_3884fb964a29eeae",
@@ -13,36 +13,8 @@
   ],
   "symptoms": [
     {
-      "id": "fiebre",
-      "question": "¿Ha presentado fiebre o aumento de la temperatura corporal?",
-      "type": "numeric",
-      "levels": [
-        {
-          "min": 0.0,
-          "max": 37.4,
-          "points": 0,
-          "label": "verde"
-        },
-        {
-          "min": 37.5,
-          "max": 38.4,
-          "points": 4,
-          "label": "amarillo"
-        },
-        {
-          "min": 38.5,
-          "max": 42.0,
-          "points": 10,
-          "label": "rojo"
-        }
-      ],
-      "fuentes": [
-        "src_3884fb964a29eeae"
-      ]
-    },
-    {
       "id": "dolor_abdominal",
-      "question": "¿Cómo califica su nivel de dolor en una escala del 0 al 10?",
+      "question": "¿Cuál es su nivel de dolor en una escala del 0 al 10?",
       "type": "numeric",
       "levels": [
         {
@@ -69,8 +41,8 @@
       ]
     },
     {
-      "id": "ileo_postoperatorio",
-      "question": "¿Presenta ausencia de deposiciones, incapacidad para expulsar gases o distensión abdominal?",
+      "id": "fiebre",
+      "question": "¿Ha presentado fiebre o elevación de la temperatura corporal?",
       "type": "binary",
       "levels": [
         {
@@ -87,14 +59,12 @@
         }
       ],
       "fuentes": [
-        "src_bfd336487cfbf38e",
-        "src_3f8a2a0813621f8e",
         "src_3884fb964a29eeae"
       ]
     },
     {
-      "id": "sangrado_quirurgico",
-      "question": "¿Ha notado sangrado abundante a través de la herida quirúrgica o expulsión de sangre por el recto?",
+      "id": "ileo_paralitico",
+      "question": "¿Presenta imposibilidad para expulsar gases, ausencia de deposiciones o náuseas/vómitos persistentes?",
       "type": "binary",
       "levels": [
         {
@@ -115,8 +85,8 @@
       ]
     },
     {
-      "id": "infeccion_sitio_operatorio",
-      "question": "¿Nota enrojecimiento, calor, inflamación o salida de pus en la herida quirúrgica?",
+      "id": "infeccion_sitio_quirurgico",
+      "question": "¿Observa signos de infección en la herida como enrojecimiento, calor, hinchazón o salida de pus?",
       "type": "binary",
       "levels": [
         {
@@ -133,13 +103,12 @@
         }
       ],
       "fuentes": [
-        "src_bfd336487cfbf38e",
-        "src_3884fb964a29eeae"
+        "src_bfd336487cfbf38e"
       ]
     },
     {
-      "id": "filtracion_anastomosis",
-      "question": "¿Presenta dolor abdominal agudo e intenso acompañado de malestar generalizado o escalofríos?",
+      "id": "sangrado_postoperatorio",
+      "question": "¿Ha notado sangrado activo en la herida quirúrgica o presencia de sangre en las deposiciones?",
       "type": "binary",
       "levels": [
         {
@@ -156,14 +125,35 @@
         }
       ],
       "fuentes": [
+        "src_bfd336487cfbf38e"
+      ]
+    },
+    {
+      "id": "infeccion_urinaria",
+      "question": "¿Siente ardor o dolor al orinar, o la necesidad de orinar con mucha frecuencia?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 4,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
         "src_bfd336487cfbf38e",
-        "src_36987cc1f902f9cd",
         "src_3884fb964a29eeae"
       ]
     },
     {
-      "id": "complicacion_respiratoria",
-      "question": "¿Siente dificultad para respirar, tos con flema o dolor en el pecho al inspirar?",
+      "id": "sintomas_respiratorios",
+      "question": "¿Presenta tos persistente con flema, dificultad para respirar o dolor al inspirar?",
       "type": "binary",
       "levels": [
         {
@@ -184,29 +174,6 @@
         "src_3884fb964a29eeae",
         "src_c121efc2bc54932e"
       ]
-    },
-    {
-      "id": "infeccion_urinaria",
-      "question": "¿Tiene ardor, molestia al orinar o necesidad frecuente de orinar desde el retiro de la sonda vesical?",
-      "type": "binary",
-      "levels": [
-        {
-          "min": 0.0,
-          "max": 0.0,
-          "points": 0,
-          "label": "verde"
-        },
-        {
-          "min": 1.0,
-          "max": 1.0,
-          "points": 4,
-          "label": "amarillo"
-        }
-      ],
-      "fuentes": [
-        "src_bfd336487cfbf38e",
-        "src_3884fb964a29eeae"
-      ]
     }
   ],
   "thresholds": {
@@ -215,11 +182,27 @@
     "rojo": 15
   },
   "alert_signs": [
-    "Filtración de la anastomosis",
-    "Sangrado postoperatorio mayor a 500 ml o sangrado rectal abundante",
-    "Sepsis abdominal o colección intraabdominal / abscesos",
-    "Isquemia intestinal",
-    "Falla ventilatoria o neumonía grave",
-    "Trombosis venosa profunda o tromboembolismo pulmonar (águlos de sangre en piernas o pulmones)"
+    "Sangrado postoperatorio abundante (>500 ml)",
+    "Filtración de la anastomosis intestinal",
+    "Íleo paralítico persistente",
+    "Infección del sitio quirúrgico u orina",
+    "Colección o absceso intraabdominal",
+    "Isquemia intestinal o falla ventilatoria"
+  ],
+  "risk_factors": [
+    {
+      "id": "diabetes_tipo_2",
+      "label": "Diabetes mellitus",
+      "fuentes": [
+        "src_bfd336487cfbf38e"
+      ]
+    },
+    {
+      "id": "hipertension",
+      "label": "Hipertensión arterial",
+      "fuentes": [
+        "src_bfd336487cfbf38e"
+      ]
+    }
   ]
 }

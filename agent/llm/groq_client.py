@@ -15,6 +15,7 @@ from agent.llm.prompts import SYSTEM_PROMPT, build_opening_user_prompt, build_us
 from core.config import Settings, get_settings
 from core.exceptions import LLMError
 from core.groq_limiter import agent_groq_call_slot
+from core.llm_errors import groq_failure_to_llm_error
 from core.models import LLMTurnOutput, RetrievedChunk
 from core.retry import with_groq_retry
 from knowledge.protocol.models import SymptomDefinition
@@ -63,7 +64,7 @@ class GroqClient:
             turno=turno,
             max_turnos=max_turnos,
             historial=conversation_history,
-            hechos_acumulados=accumulated_facts,
+            sintomas_acumulados=accumulated_facts,
             patient_text=patient_message,
             evidence_block=evidence_block,
             reference_date=ref.isoformat(),
@@ -76,7 +77,7 @@ class GroqClient:
         try:
             return with_groq_retry(_call, operation_name="groq_generate_turn")
         except Exception as exc:  # noqa: BLE001
-            raise LLMError(f"Groq turn generation failed: {exc}") from exc
+            raise groq_failure_to_llm_error(exc, prefix="Groq turn generation failed") from exc
 
     def generate_opening(
         self,
@@ -111,7 +112,7 @@ class GroqClient:
         try:
             return with_groq_retry(_call, operation_name="groq_generate_opening")
         except Exception as exc:  # noqa: BLE001
-            raise LLMError(f"Groq opening generation failed: {exc}") from exc
+            raise groq_failure_to_llm_error(exc, prefix="Groq opening generation failed") from exc
 
     def _generate_structured(
         self,

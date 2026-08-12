@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncGenerator
+from threading import Thread
 
 import numpy as np
 from kokoro import KPipeline
@@ -12,6 +14,8 @@ from pipecat.frames.frames import ErrorFrame, Frame, TTSAudioRawFrame
 from pipecat.services.settings import TTSSettings
 from pipecat.services.tts_service import TextAggregationMode, TTSService
 from pipecat.utils.tracing.service_decorators import traced_tts
+
+SENTENCE_SPLIT_PATTERN = r"(?<=[.!?…])\s+"
 
 
 class KokoroTTSService(TTSService):
@@ -28,7 +32,7 @@ class KokoroTTSService(TTSService):
     ) -> None:
         super().__init__(
             sample_rate=sample_rate,
-            text_aggregation_mode=TextAggregationMode.TOKEN,
+            text_aggregation_mode=TextAggregationMode.SENTENCE,
             push_start_frame=True,
             push_stop_frames=True,
             settings=TTSSettings(
@@ -57,32 +61,51 @@ class KokoroTTSService(TTSService):
             return
 
         loop = asyncio.get_running_loop()
+        chunk_queue: asyncio.Queue[bytes | None | BaseException] = asyncio.Queue()
+        started = time.perf_counter()
+        first_audio_logged = False
 
-        def synthesize() -> list[bytes]:
-            chunks: list[bytes] = []
-            generator = self._pipeline(
-                cleaned,
-                voice=self._voice,
-                speed=self._speed,
-                split_pattern=r"(?<=[.!?…])\s+",
-            )
-            for _graphemes, _phonemes, audio in generator:
-                pcm = _float_audio_to_pcm16(audio)
-                if pcm:
-                    chunks.append(pcm)
-            return chunks
+        def producer() -> None:
+            try:
+                generator = self._pipeline(
+                    cleaned,
+                    voice=self._voice,
+                    speed=self._speed,
+                    split_pattern=SENTENCE_SPLIT_PATTERN,
+                )
+                for _graphemes, _phonemes, audio in generator:
+                    pcm = _float_audio_to_pcm16(audio)
+                    if pcm:
+                        loop.call_soon_threadsafe(chunk_queue.put_nowait, pcm)
+            except Exception as exc:  # noqa: BLE001
+                loop.call_soon_threadsafe(chunk_queue.put_nowait, exc)
+            finally:
+                loop.call_soon_threadsafe(chunk_queue.put_nowait, None)
 
-        try:
-            audio_chunks = await loop.run_in_executor(None, synthesize)
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Error en síntesis Kokoro")
-            yield ErrorFrame(error=f"Kokoro TTS error: {exc}")
-            return
+        Thread(target=producer, daemon=True).start()
 
         await self.start_tts_usage_metrics(cleaned)
-        for chunk in audio_chunks:
+        while True:
+            item = await chunk_queue.get()
+            if item is None:
+                break
+            if isinstance(item, Exception):
+                logger.exception("Error en síntesis Kokoro")
+                yield ErrorFrame(error=f"Kokoro TTS error: {item}")
+                return
+
+            if not first_audio_logged:
+                elapsed_ms = (time.perf_counter() - started) * 1000
+                logger.info(
+                    "Kokoro TTFB | {:.0f} ms | chars={} | preview={!r}",
+                    elapsed_ms,
+                    len(cleaned),
+                    cleaned[:72],
+                )
+                first_audio_logged = True
+
             await self.stop_ttfb_metrics()
-            yield TTSAudioRawFrame(chunk, self.sample_rate, 1, context_id=context_id)
+            yield TTSAudioRawFrame(item, self.sample_rate, 1, context_id=context_id)
 
 
 def _float_audio_to_pcm16(audio: np.ndarray) -> bytes:

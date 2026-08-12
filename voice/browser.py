@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
@@ -55,7 +56,12 @@ def build_webrtc_pipeline(
             interim_results=True,
         ),
     )
-    llm = PostOpLLMService(orchestrator, call_id, app_settings=settings)
+    llm = PostOpLLMService(
+        orchestrator,
+        call_id,
+        app_settings=settings,
+        defer_opening_until_connected=True,
+    )
     tts = KokoroTTSService(
         lang_code=settings.kokoro_lang_code,
         voice=settings.kokoro_voice,
@@ -92,6 +98,10 @@ def build_webrtc_pipeline(
         idle_timeout_secs=settings.voice_pipeline_idle_timeout_secs,
     )
     llm.bind_pipeline_stop(worker.stop_when_done)
+
+    @transport.event_handler("on_client_connected")
+    async def on_client_connected(_transport, _client) -> None:
+        asyncio.create_task(llm.ensure_opening())
 
     return VoiceSession(
         orchestrator=orchestrator,

@@ -1,7 +1,7 @@
 {
-  "procedure": "apendicectomia",
+  "procedure": "appendicitis",
   "version": "1.0",
-  "generated_at": "2026-08-11T00:45:02.070377Z",
+  "generated_at": "2026-08-12T02:02:07.767665Z",
   "source_ids": [
     "src_21ce22f530b67553",
     "src_4435ca0e37ef9f56",
@@ -17,7 +17,7 @@
   "symptoms": [
     {
       "id": "fiebre",
-      "question": "¿Ha tenido fiebre o su temperatura corporal ha superado los 38 °C (101 °F)?",
+      "question": "¿Ha tenido fiebre? ¿Cuál ha sido su temperatura corporal en grados centígrados?",
       "type": "numeric",
       "levels": [
         {
@@ -47,7 +47,7 @@
     },
     {
       "id": "dolor_abdominal",
-      "question": "¿Cómo califica su dolor abdominal en una escala del 0 al 10?",
+      "question": "¿Cómo clasifica la intensidad de su dolor abdominal del 0 al 10 o si este empeora gradualmente?",
       "type": "numeric",
       "levels": [
         {
@@ -76,8 +76,8 @@
       ]
     },
     {
-      "id": "infeccion_herida",
-      "question": "¿Presenta enrojecimiento, calor, sangrado o salida de pus en la herida quirúrgica?",
+      "id": "secrecion_o_cambios_herida",
+      "question": "¿Presenta enrojecimiento, calor, sangrado, salida de pus o separación de puntos en la herida?",
       "type": "binary",
       "levels": [
         {
@@ -100,8 +100,8 @@
       ]
     },
     {
-      "id": "dehiscencia_herida",
-      "question": "¿Ha notado apertura de la herida o separación de los puntos de sutura?",
+      "id": "nauseas_o_vomitos",
+      "question": "¿Presenta náuseas o vómitos persistentes que no se detienen?",
       "type": "binary",
       "levels": [
         {
@@ -123,8 +123,8 @@
       ]
     },
     {
-      "id": "nauseas_y_vomitos",
-      "question": "¿Ha presentado náuseas o vómitos persistentes que no se detienen?",
+      "id": "ausencia_deposiciones",
+      "question": "¿Presenta falta de deposiciones que no mejora a pesar de una adecuada hidratación y fibra?",
       "type": "binary",
       "levels": [
         {
@@ -141,35 +141,12 @@
         }
       ],
       "fuentes": [
-        "src_69feacc2fe4ffc6e",
         "src_634d3f06803af71f"
       ]
     },
     {
-      "id": "estrenimiento",
-      "question": "¿Tiene falta de deposiciones que no mejora aun con buena hidratación y fibra?",
-      "type": "binary",
-      "levels": [
-        {
-          "min": 0.0,
-          "max": 0.0,
-          "points": 0,
-          "label": "verde"
-        },
-        {
-          "min": 1.0,
-          "max": 1.0,
-          "points": 4,
-          "label": "amarillo"
-        }
-      ],
-      "fuentes": [
-        "src_634d3f06803af71f"
-      ]
-    },
-    {
-      "id": "diarrea",
-      "question": "¿Ha presentado diarrea con una duración mayor a 3 días?",
+      "id": "diarrea_persistente",
+      "question": "¿Ha presentado diarrea constante por más de 3 días?",
       "type": "binary",
       "levels": [
         {
@@ -191,7 +168,7 @@
     },
     {
       "id": "dolor_hinchazon_piernas",
-      "question": "¿Tiene dolor o hinchazón en las piernas o en las pantorrillas?",
+      "question": "¿Siente dolor o hinchazón en las piernas o pantorrillas?",
       "type": "binary",
       "levels": [
         {
@@ -212,8 +189,8 @@
       ]
     },
     {
-      "id": "dificultad_respiratoria",
-      "question": "¿Presenta dificultad para respirar o dolor en el pecho?",
+      "id": "dificultad_respiratoria_dolor_pecho",
+      "question": "¿Tiene dificultad para respirar o dolor en el pecho?",
       "type": "binary",
       "levels": [
         {
@@ -240,14 +217,15 @@
     "rojo": 15
   },
   "alert_signs": [
-    "Fiebre mayor de 38 °C (101 °F) o escalofríos",
+    "Fiebre mayor de 38 °C o 101 °F",
     "Enrojecimiento, calor, sangrado o salida de pus en la herida quirúrgica",
     "Apertura de la herida o separación de los puntos",
-    "Dolor abdominal persistente o que va aumentando sin respuesta a medicamentos",
+    "Dolor abdominal progresivo o que no mejora con medicamentos",
     "Náuseas o vómitos persistentes",
-    "Falta de deposiciones que no mejora con hidratación y fibra",
+    "Falta de deposiciones persistente",
     "Diarrea que dura más de 3 días",
     "Dolor o hinchazón en las piernas o pantorrillas",
     "Dificultad para respirar o dolor en el pecho"
-  ]
+  ],
+  "risk_factors": []
 }

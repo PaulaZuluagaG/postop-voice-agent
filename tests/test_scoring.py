@@ -8,7 +8,6 @@ from agent.decision.scoring import (
 )
 from agent.messages import ALERT_MESSAGE, build_no_evidence_message
 from core.models import (
-    ClinicalFacts,
     LLMTurnOutput,
     ResponseCategory,
     SeverityLevel,
@@ -22,7 +21,8 @@ def test_day_factor_schedule() -> None:
     assert get_day_factor(2) == 0.75
     assert get_day_factor(3) == 1.0
     assert get_day_factor(7) == 1.25
-    assert get_day_factor(10) == 1.5
+    assert get_day_factor(10) == 1.375
+    assert get_day_factor(14) == 1.5
 
 
 def test_protocol_fever_high_scores_with_day_factor() -> None:
@@ -83,7 +83,6 @@ def test_update_covered_symptoms_from_sintomas_dict() -> None:
         categoria=ResponseCategory.RESPUESTA_VALIDA,
         foco_sintoma="dolor",
         sintomas={"dolor": 5.0},
-        hechos=ClinicalFacts(),
         texto_paciente="Entendido.",
         pregunta="¿Ha tenido fiebre?",
     )
@@ -92,8 +91,9 @@ def test_update_covered_symptoms_from_sintomas_dict() -> None:
 
 
 def test_alert_message_does_not_reference_911() -> None:
-    assert "911" in ALERT_MESSAGE
+    assert "911" not in ALERT_MESSAGE
     assert "equipo de salud" in ALERT_MESSAGE.lower()
+    assert "evaluación presencial" in ALERT_MESSAGE.lower()
 
 
 def test_no_evidence_disclaimer_is_honest() -> None:

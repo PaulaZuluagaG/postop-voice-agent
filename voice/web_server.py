@@ -25,9 +25,11 @@ from pipecat.transports.smallwebrtc.request_handler import (  # noqa: E402
 )
 from pipecat.workers.runner import WorkerRunner  # noqa: E402
 
+from api.services.calls import CallLogService
 from core.config import Settings, get_settings
 from core.exceptions import ConfigurationError
-from core.scenarios import list_procedure_options_from_disk
+from core.scenarios import list_procedure_options_from_disk, resolve_procedure_selection
+from knowledge.protocol.loader import list_risk_factors_for_procedure
 from scripts.patient_registration import registration_from_frontend
 from voice.browser import build_webrtc_pipeline
 from voice.pipeline import create_orchestrator_and_session
@@ -42,12 +44,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.voice_web_cors_origins,
+        allow_origin_regex=settings.voice_web_cors_origin_regex,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
     active_sessions: dict[str, dict[str, Any]] = {}
+    session_call_ids: dict[str, str] = {}
     webrtc_handler = SmallWebRTCRequestHandler()
 
     @app.get("/status")
@@ -60,6 +64,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             {"value": value, "label": label}
             for value, label in list_procedure_options_from_disk(settings.textos_dir)
         ]
+
+    @app.get("/api/procedures/{procedure_id}/risk-factors")
+    def list_procedure_risk_factors(procedure_id: str) -> list[dict[str, str]]:
+        selection = resolve_procedure_selection(procedure_id)
+        if selection.is_other:
+            return []
+        return list_risk_factors_for_procedure(
+            selection.procedure_id,
+            settings=settings,
+            uses_general_protocol=selection.uses_general_protocol,
+        )
 
     @app.post("/start")
     async def start_agent(request: Request) -> dict[str, Any]:
@@ -81,9 +96,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def _run_voice_session(
         connection: SmallWebRTCConnection,
         patient_payload: dict[str, Any],
+        session_id: str | None = None,
     ) -> None:
         registration = registration_from_frontend(patient_payload)
         orchestrator, call_id = create_orchestrator_and_session(registration, settings=settings)
+        if session_id:
+            session_call_ids[session_id] = str(call_id)
         voice_session = build_webrtc_pipeline(
             orchestrator,
             call_id,
@@ -121,7 +139,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         patient_payload = _resolve_patient_payload(request, active_sessions, session_id)
 
         async def webrtc_connection_callback(connection: SmallWebRTCConnection) -> None:
-            background_tasks.add_task(_run_voice_session, connection, patient_payload)
+            background_tasks.add_task(
+                _run_voice_session,
+                connection,
+                patient_payload,
+                session_id,
+            )
 
         answer = await webrtc_handler.handle_web_request(
             request=request,
@@ -135,6 +158,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def ice_candidate(request: SmallWebRTCPatchRequest) -> dict[str, str]:
         await webrtc_handler.handle_patch_request(request)
         return {"status": "success"}
+
+    @app.get("/sessions/{session_id}/summary")
+    async def get_session_summary(session_id: str) -> dict[str, Any]:
+        if session_id not in active_sessions:
+            raise HTTPException(status_code=404, detail="Sesión no encontrada")
+
+        call_id = session_call_ids.get(session_id)
+        if not call_id:
+            raise HTTPException(status_code=404, detail="Resumen aún no disponible")
+
+        summary = CallLogService(settings).get_call_summary(call_id)
+        if summary is None:
+            raise HTTPException(status_code=404, detail="Resumen aún no disponible")
+        return summary.model_dump(mode="json")
 
     @app.api_route(
         "/sessions/{session_id}/{path:path}",

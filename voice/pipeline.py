@@ -49,9 +49,11 @@ def create_orchestrator_and_session(
         procedure_id=registration.procedure_id,
         patient_name=registration.patient_name,
         patient_id=registration.patient_id,
+        postop_day=registration.postop_day,
         surgery_date=registration.surgery_date,
         custom_procedure=registration.custom_procedure,
         uses_general_protocol=registration.uses_general_protocol,
+        patient_comorbidities=registration.patient_comorbidities,
     )
     return orchestrator, session.call_id
 
@@ -196,7 +198,8 @@ def _registration_from_call(
     return PatientRegistration(
         patient_name=session.patient_name,
         patient_id=session.patient_id or "sin-id",
-        surgery_date=session.surgery_date or "",
+        postop_day=session.postop_day,
+        surgery_date=session.surgery_date,
         procedure_scenario=session.procedure_scenario,
         procedure_id=session.procedure_id,
         custom_procedure=session.custom_procedure,

@@ -2,8 +2,20 @@
 
 from __future__ import annotations
 
-from core.models import LLMTurnOutput, ResponseCategory, YesNo, coerce_optional_float, coerce_yes_no
+from core.models import LLMTurnOutput, ResponseCategory, coerce_optional_float, coerce_yes_no
 from knowledge.protocol.models import PostOpProtocol, SymptomDefinition
+
+_AMBIGUOUS_CATEGORIES = frozenset(
+    {
+        ResponseCategory.NO_ENTIENDE,
+        ResponseCategory.NO_LO_SE,
+    }
+)
+
+
+def is_ambiguous_response(llm_output: LLMTurnOutput) -> bool:
+    """True when the patient answer was vague or not understood."""
+    return llm_output.categoria in _AMBIGUOUS_CATEGORIES
 
 
 def pending_symptoms(
@@ -25,37 +37,17 @@ def all_symptoms_covered(protocol: PostOpProtocol, covered: set[str]) -> bool:
     return len(pending_symptoms(protocol, covered)) == 0
 
 
-def _symptom_has_value(symptom_id: str, llm_output: LLMTurnOutput) -> bool:
-    if symptom_id in llm_output.sintomas and llm_output.sintomas[symptom_id] is not None:
-        return True
-    return False
-
-
 def extract_symptom_values(llm_output: LLMTurnOutput) -> dict[str, object]:
     values: dict[str, object] = {}
     for symptom_id, raw in llm_output.sintomas.items():
         if raw is None:
             continue
         values[symptom_id] = raw
-
-    legacy_map = {
-        "dolor": llm_output.hechos.dolor_0_10,
-        "fiebre": llm_output.hechos.fiebre_c,
-        "disnea": llm_output.hechos.disnea,
-        "sangrado": llm_output.hechos.sangreado,
-        "vomitos": llm_output.hechos.vomitos,
-        "vomitos_episodios": llm_output.hechos.vomitos_episodios,
-        "confusion": llm_output.hechos.confusion,
-    }
-    for symptom_id, raw in legacy_map.items():
-        if raw is None or symptom_id in values:
-            continue
-        if isinstance(raw, YesNo):
-            values[symptom_id] = raw.value
-        else:
-            values[symptom_id] = raw
-
     return values
+
+
+def has_structured_symptoms(llm_output: LLMTurnOutput) -> bool:
+    return bool(extract_symptom_values(llm_output))
 
 
 def update_covered_symptoms(
@@ -65,27 +57,29 @@ def update_covered_symptoms(
     focal_symptom_id: str | None = None,
 ) -> set[str]:
     updated = set(covered)
+    if is_ambiguous_response(llm_output):
+        return updated
+
+    if llm_output.categoria != ResponseCategory.RESPUESTA_VALIDA:
+        return updated
+
     values = extract_symptom_values(llm_output)
 
     for symptom_id in values:
         updated.add(symptom_id)
 
-    if focal_symptom_id and llm_output.categoria == ResponseCategory.RESPUESTA_VALIDA:
-        if focal_symptom_id in values or _response_addresses_symptom(llm_output):
-            updated.add(focal_symptom_id)
+    if focal_symptom_id and (focal_symptom_id in values or _response_addresses_symptom(llm_output)):
+        updated.add(focal_symptom_id)
 
-    if llm_output.foco_sintoma:
+    if llm_output.foco_sintoma and llm_output.foco_sintoma in values:
         updated.add(llm_output.foco_sintoma)
 
     return updated
 
 
 def _response_addresses_symptom(llm_output: LLMTurnOutput) -> bool:
-    return llm_output.categoria in {
-        ResponseCategory.RESPUESTA_VALIDA,
-        ResponseCategory.NO_LO_SE,
-    } and bool(
-        extract_symptom_values(llm_output) or llm_output.hechos.model_dump(exclude_none=True)
+    return llm_output.categoria == ResponseCategory.RESPUESTA_VALIDA and has_structured_symptoms(
+        llm_output
     )
 
 

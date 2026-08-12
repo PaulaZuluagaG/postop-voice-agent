@@ -1,20 +1,21 @@
 {
   "procedure": "cholecystitis",
   "version": "1.0",
-  "generated_at": "2026-08-10T23:36:46.698107Z",
+  "generated_at": "2026-08-12T02:03:08.597209Z",
   "source_ids": [
     "src_11a8186d9a9eac27",
     "src_2045128bcb8cbf20",
+    "src_245fba7fb64c0008",
     "src_34d6680c1a66ee5d",
     "src_39514dcd94c8f3f0",
     "src_4bccf6d769a57475",
     "src_f6eb9dab68e88a98",
-    "src_fad62461bfc425af"
+    "src_fa435521f99f6441"
   ],
   "symptoms": [
     {
       "id": "dolor_abdominal",
-      "question": "¿Cuál es su nivel de dolor abdominal en una escala de 0 a 10?",
+      "question": "¿Ha experimentado dolor intenso o persistente en el abdomen o en el cuadrante superior derecho?",
       "type": "numeric",
       "levels": [
         {
@@ -38,43 +39,13 @@
       ],
       "fuentes": [
         "src_11a8186d9a9eac27",
-        "src_39514dcd94c8f3f0",
-        "src_fad62461bfc425af"
-      ]
-    },
-    {
-      "id": "nauseas_y_vomitos",
-      "question": "¿Cuántos episodios de náuseas o vómitos ha presentado hoy?",
-      "type": "numeric",
-      "levels": [
-        {
-          "min": 0.0,
-          "max": 0.0,
-          "points": 0,
-          "label": "verde"
-        },
-        {
-          "min": 1.0,
-          "max": 2.0,
-          "points": 4,
-          "label": "amarillo"
-        },
-        {
-          "min": 3.0,
-          "max": 100.0,
-          "points": 10,
-          "label": "rojo"
-        }
-      ],
-      "fuentes": [
-        "src_39514dcd94c8f3f0",
-        "src_11a8186d9a9eac27",
-        "src_4bccf6d769a57475"
+        "src_245fba7fb64c0008",
+        "src_39514dcd94c8f3f0"
       ]
     },
     {
       "id": "fiebre",
-      "question": "¿Ha tenido fiebre? ¿Cuál es su temperatura corporal medida?",
+      "question": "¿Ha tenido fiebre o aumento de la temperatura corporal?",
       "type": "numeric",
       "levels": [
         {
@@ -97,12 +68,44 @@
         }
       ],
       "fuentes": [
+        "src_245fba7fb64c0008",
+        "src_4bccf6d769a57475"
+      ]
+    },
+    {
+      "id": "nauseas_vomitos",
+      "question": "¿Ha presentado episodios de náuseas o vómitos?",
+      "type": "numeric",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 2.0,
+          "points": 4,
+          "label": "amarillo"
+        },
+        {
+          "min": 3.0,
+          "max": 100.0,
+          "points": 10,
+          "label": "rojo"
+        }
+      ],
+      "fuentes": [
+        "src_11a8186d9a9eac27",
+        "src_245fba7fb64c0008",
+        "src_39514dcd94c8f3f0",
         "src_4bccf6d769a57475"
       ]
     },
     {
       "id": "ictericia",
-      "question": "¿Ha notado coloración amarillenta en los ojos o la piel?",
+      "question": "¿Ha notado coloración amarillenta en la piel o en la parte blanca de los ojos?",
       "type": "binary",
       "levels": [
         {
@@ -119,59 +122,13 @@
         }
       ],
       "fuentes": [
-        "src_11a8186d9a9eac27"
-      ]
-    },
-    {
-      "id": "indigestion_intolerancia_grasas",
-      "question": "¿Presenta síntomas de indigestión, ardor de estómago o intolerancia al ingerir grasas?",
-      "type": "binary",
-      "levels": [
-        {
-          "min": 0.0,
-          "max": 0.0,
-          "points": 0,
-          "label": "verde"
-        },
-        {
-          "min": 1.0,
-          "max": 1.0,
-          "points": 4,
-          "label": "amarillo"
-        }
-      ],
-      "fuentes": [
-        "src_39514dcd94c8f3f0",
-        "src_11a8186d9a9eac27"
-      ]
-    },
-    {
-      "id": "alteraciones_intestinales",
-      "question": "¿Ha experimentado alteración en los hábitos intestinales (diarrea o estreñimiento)?",
-      "type": "binary",
-      "levels": [
-        {
-          "min": 0.0,
-          "max": 0.0,
-          "points": 0,
-          "label": "verde"
-        },
-        {
-          "min": 1.0,
-          "max": 1.0,
-          "points": 4,
-          "label": "amarillo"
-        }
-      ],
-      "fuentes": [
-        "src_39514dcd94c8f3f0",
         "src_11a8186d9a9eac27",
-        "src_fad62461bfc425af"
+        "src_245fba7fb64c0008"
       ]
     },
     {
-      "id": "dificultad_respiratoria",
-      "question": "¿Presenta dificultad para respirar, falta de aire o sedación excesiva?",
+      "id": "heces_claras",
+      "question": "¿Ha notado que sus heces o deposiciones son de color claro o de tono arcilla?",
       "type": "binary",
       "levels": [
         {
@@ -188,8 +145,74 @@
         }
       ],
       "fuentes": [
-        "src_fad62461bfc425af",
-        "src_4bccf6d769a57475"
+        "src_245fba7fb64c0008"
+      ]
+    },
+    {
+      "id": "dispepsia_hinchazon",
+      "question": "¿Presenta sensación de indigestión, dispepsia, hinchazón o intolerancia a las grasas?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 4,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_11a8186d9a9eac27",
+        "src_39514dcd94c8f3f0"
+      ]
+    },
+    {
+      "id": "anorexia",
+      "question": "¿Ha presentado falta de apetito o anorexia desde la cirugía?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 4,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_39514dcd94c8f3f0"
+      ]
+    },
+    {
+      "id": "acidez_estomacal",
+      "question": "¿Ha tenido acidez o ardor estomacal (heartburn)?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 4,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_39514dcd94c8f3f0"
       ]
     }
   ],
@@ -199,12 +222,26 @@
     "rojo": 15
   },
   "alert_signs": [
-    "Fuga biliar (bile leak)",
-    "Lesión de la vía biliar (bile duct injury)",
-    "Ictericia (Jaundice)",
-    "Fiebre postoperatoria / infección",
-    "Depresión respiratoria o complicaciones pulmonares",
-    "Trombosis venosa",
-    "Dolor abdominal persistente o descontrolado"
+    "Fiebre elevada o persistente",
+    "Ictericia (coloración amarillenta de la piel o los ojos)",
+    "Heces acólicas (color claro o arcilla)",
+    "Dolor abdominal severo o de tipo peritonitis",
+    "Signos de hemorragia o colangitis"
+  ],
+  "risk_factors": [
+    {
+      "id": "diabetes_mellitus",
+      "label": "Diabetes mellitus",
+      "fuentes": [
+        "src_11a8186d9a9eac27"
+      ]
+    },
+    {
+      "id": "hipertension",
+      "label": "Hipertensión arterial",
+      "fuentes": [
+        "src_11a8186d9a9eac27"
+      ]
+    }
   ]
 }

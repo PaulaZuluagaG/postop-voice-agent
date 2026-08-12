@@ -8,8 +8,7 @@ from __future__ import annotations
 
 import re
 
-from agent.decision.clinical_axes import TRIAGE_AXES
-from agent.decision.turn_enrichment import has_structured_facts
+from agent.decision.protocol_triage import has_structured_symptoms
 from core.models import LLMTurnOutput, ResponseCategory
 
 _REFORMULATION_CATEGORIES = frozenset(
@@ -81,9 +80,9 @@ def is_triage_symptom_exchange(llm_output: LLMTurnOutput, patient_message: str) 
         return False
     if patient_seeks_medical_information(patient_message):
         return False
-    if llm_output.foco in TRIAGE_AXES:
+    if llm_output.foco_sintoma:
         return True
-    if has_structured_facts(llm_output.hechos):
+    if has_structured_symptoms(llm_output):
         return True
     # Short or declarative answers to agent questions (e.g. "4", "está sanando", "bien").
     return bool(patient_message.strip())

@@ -9,6 +9,7 @@ from uuid import UUID
 
 from loguru import logger
 from pipecat.frames.frames import (
+    ClientConnectedFrame,
     EndFrame,
     Frame,
     InterruptionFrame,
@@ -23,9 +24,10 @@ from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.llm_service import LLMService
 from pipecat.services.settings import LLMSettings
 
+from agent.messages import LLM_RATE_LIMIT_CLOSE_MESSAGE
 from agent.orchestrator import ConversationOrchestrator
 from core.config import Settings, get_settings
-from core.exceptions import LLMCancelledError, LLMError, SessionError
+from core.exceptions import LLMCancelledError, LLMError, LLMRateLimitError, SessionError
 from voice.frames import PostOpUserTurnFrame
 
 
@@ -55,6 +57,7 @@ class PostOpLLMService(LLMService):
         call_id: UUID,
         *,
         app_settings: Settings | None = None,
+        defer_opening_until_connected: bool = False,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -64,13 +67,16 @@ class PostOpLLMService(LLMService):
         self._app_settings = app_settings or get_settings()
         self._orchestrator = orchestrator
         self._call_id = call_id
+        self._defer_opening_until_connected = defer_opening_until_connected
         self._cancel_event = asyncio.Event()
         self._active_task: asyncio.Task[None] | None = None
         self._turn_lock = asyncio.Lock()
+        self._opening_lock = asyncio.Lock()
         self._last_processed_message: str | None = None
         self._opening_sent = False
         self._opening_ready = asyncio.Event()
         self._opening_failed = asyncio.Event()
+        self._opening_in_progress = False
         self._call_ended = asyncio.Event()
         self._pipeline_stop: Callable[[], Awaitable[None]] | None = None
 
@@ -96,18 +102,73 @@ class PostOpLLMService(LLMService):
     async def start(self, frame: StartFrame) -> None:
         """Inicia el servicio y emite el saludo clínico como en ``begin_triage``."""
         await super().start(frame)
-        try:
-            await self.speak_opening()
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Fallo en triage inicial: {}", exc)
-            print(
-                f"\nError: no se pudo generar el saludo del agente ({exc}).\n",
-                file=sys.stderr,
-            )
-            self._opening_failed.set()
-            await self._finalize_call()
+        if self._defer_opening_until_connected:
             return
-        self._opening_ready.set()
+        await self._run_opening()
+
+    async def _run_opening(self) -> None:
+        if self._opening_sent:
+            self._opening_ready.set()
+            return
+        if self._defer_opening_until_connected:
+            await asyncio.sleep(0.75)
+        self._opening_in_progress = True
+        try:
+            try:
+                await self.speak_opening()
+            except LLMRateLimitError as exc:
+                logger.warning("Cuota Groq agotada durante apertura: {}", exc)
+                await self._handle_rate_limit_closure()
+                return
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Fallo en triage inicial: {}", exc)
+                print(
+                    f"\nAdvertencia: saludo con protocolo sin RAG ({exc}).\n",
+                    file=sys.stderr,
+                )
+                self._opening_failed.set()
+                await self._speak_opening_fallback()
+            await self._wait_opening_playback_grace()
+        finally:
+            self._opening_in_progress = False
+            self._opening_ready.set()
+
+    async def _wait_opening_playback_grace(self) -> None:
+        """Wait until the opening greeting has likely finished playing in the browser."""
+        session = self._orchestrator.get_session(self._call_id)
+        opening = (session.opening_message or "").strip()
+        if not opening:
+            return
+        grace_seconds = min(max(2.0, len(opening) / 14.0), 12.0)
+        await asyncio.sleep(grace_seconds)
+
+    async def ensure_opening(self) -> None:
+        """Speak the clinical opening once, safe to call from multiple triggers."""
+        if self._opening_sent or self._call_ended.is_set():
+            if self._opening_sent:
+                self._opening_ready.set()
+            return
+        async with self._opening_lock:
+            if self._opening_sent or self._call_ended.is_set():
+                if self._opening_sent:
+                    self._opening_ready.set()
+                return
+            await self._run_opening()
+
+    async def _speak_opening_fallback(self) -> None:
+        """Emite saludo determinístico por protocolo si el bootstrap falló."""
+        if self._opening_sent:
+            return
+
+        async def _tokens() -> AsyncIterator[str]:
+            opening = self._orchestrator.compose_fallback_opening(self._call_id)
+            yield opening
+
+        await self._stream_response(_tokens())
+        self._opening_sent = True
+        session = self._orchestrator.get_session(self._call_id)
+        if session.opening_message:
+            print(f"Agente> {session.opening_message}\n")
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
@@ -116,6 +177,12 @@ class PostOpLLMService(LLMService):
             self._cancel_event.set()
             if self._active_task and not self._active_task.done():
                 self._active_task.cancel()
+            return
+
+        if isinstance(frame, ClientConnectedFrame):
+            if self._defer_opening_until_connected and not self._opening_sent:
+                asyncio.create_task(self.ensure_opening())
+            await self.push_frame(frame, direction)
             return
 
         if isinstance(frame, LLMContextFrame | PostOpUserTurnFrame):
@@ -154,6 +221,13 @@ class PostOpLLMService(LLMService):
             await self.push_frame(frame, direction)
             return
 
+        if self._defer_opening_until_connected:
+            if not self._opening_ready.is_set():
+                if not self._opening_in_progress and not self._opening_sent:
+                    asyncio.create_task(self.ensure_opening())
+                logger.debug("Turno ignorado: saludo inicial aún en curso.")
+                return
+
         if patient_message == self._last_processed_message:
             logger.debug("Turno ignorado: mensaje duplicado del paciente.")
             return
@@ -180,6 +254,9 @@ class PostOpLLMService(LLMService):
                 await self._stream_response(stream)
             except LLMCancelledError:
                 logger.debug("Turno de voz cancelado por interrupción")
+                return
+            except LLMRateLimitError as exc:
+                await self._handle_rate_limit_closure(exc)
                 return
             except LLMError as exc:
                 if self._cancel_event.is_set():
@@ -213,10 +290,36 @@ class PostOpLLMService(LLMService):
         if session.call_closed:
             await self._finalize_call()
 
-    async def _finalize_call(self) -> None:
+    async def _handle_rate_limit_closure(self, exc: LLMRateLimitError | None = None) -> None:
+        if exc is not None:
+            logger.warning("Cuota Groq agotada, cerrando llamada con mensaje al paciente: {}", exc)
+
+        message = LLM_RATE_LIMIT_CLOSE_MESSAGE
+
+        async def _tokens() -> AsyncIterator[str]:
+            yield message
+
+        await self._stream_response(_tokens())
+        print(f"Agente> {message}\n")
+
+        session = self._orchestrator.get_session(self._call_id)
+        if not session.call_closed:
+            self._orchestrator.close_call(self._call_id, reason="llm_rate_limit")
+        await self._finalize_call(last_spoken=message)
+
+    async def _finalize_call(self, *, last_spoken: str | None = None) -> None:
         if self._call_ended.is_set():
             return
         self._call_ended.set()
+
+        session = self._orchestrator.get_session(self._call_id)
+        if last_spoken is None:
+            last_spoken = session.opening_message or ""
+            if session.turns:
+                last_spoken = session.turns[-1].agent_response
+        grace_seconds = min(max(2.5, len(last_spoken) / 14.0), 8.0)
+        await asyncio.sleep(grace_seconds)
+
         print("La llamada clínica ha finalizado. Gracias por su tiempo.\n")
         if self._pipeline_stop is not None:
             await self._pipeline_stop()

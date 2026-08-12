@@ -16,7 +16,8 @@ Eres un experto en extracción clínica postoperatoria. Debes generar un protoco
     "fuentes": ["source_id"]
   }}],
   "thresholds": {{"verde": int, "amarillo": int, "rojo": int}},
-  "alert_signs": ["string"]
+  "alert_signs": ["string"],
+  "risk_factors": [{{"id": "string_snake_case", "label": "string", "fuentes": ["source_id"]}}]
 }}
 
 [REQUISITOS OBLIGATORIOS]
@@ -29,6 +30,10 @@ Eres un experto en extracción clínica postoperatoria. Debes generar un protoco
 - Binarios: min=0,max=0 para "no"; min=1,max=1 para "sí".
 - Incluye source_ids reales en "fuentes" por síntoma.
 - Extrae también "alert_signs" como lista de strings cuando el texto los mencione.
+- Extrae "risk_factors" SOLO para comorbilidades crónicas mencionadas en los fragmentos (p. ej. diabetes_tipo_2, hipertension, obesidad, epoc, enfermedad_cardiovascular, osteoartritis).
+- NO incluyas hábitos ni factores modificables (tabaco, alcohol, sedentarismo, consumo de tabaco, etc.).
+- Máximo 2 entradas en "risk_factors". Cada una debe tener "id" en snake_case (preferir ids canónicos como diabetes_tipo_2), "label" legible en español y "fuentes" con source_ids reales del fragmento donde se menciona.
+- No inventes comorbilidades sin respaldo textual en los fragmentos. Si no hay mención, usa "risk_factors": [].
 
 [EJEMPLO DE PROTOCOLO]
 {{
@@ -58,7 +63,11 @@ Eres un experto en extracción clínica postoperatoria. Debes generar un protoco
     }},
   ],
   "thresholds": {{"verde": 0, "amarillo": 8, "rojo": 15}},
-  "alert_signs": []
+  "alert_signs": [],
+  "risk_factors": [
+    {{"id": "diabetes_tipo_2", "label": "Diabetes tipo 2", "fuentes": ["doc_apendicitis_01"]}},
+    {{"id": "obesidad", "label": "Obesidad", "fuentes": ["doc_apendicitis_02"]}}
+  ]
 }}
 
 [EJEMPLO ONCOLOGÍA — complicaciones descritas en prosa]
