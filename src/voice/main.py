@@ -25,6 +25,7 @@ from core.registration import (
     registration_from_args,
 )
 from core.scenarios import SCENARIO_OPTIONS
+from knowledge.readiness import assess_voice_readiness
 from voice.pipeline import (
     VoiceSession,
     build_text_pipeline,
@@ -131,6 +132,12 @@ async def run_agent(args: argparse.Namespace) -> int:
 
     if not settings.groq_api_key:
         raise ConfigurationError("GROQ_API_KEY es obligatorio")
+
+    readiness = assess_voice_readiness(settings)
+    if not readiness.ready:
+        print(readiness.detail, file=sys.stderr)
+        print("Ejecute postop-ingest antes de iniciar una llamada.", file=sys.stderr)
+        return 1
 
     registration = _resolve_registration(args)
     orchestrator, call_id = create_orchestrator_and_session(registration, settings=settings)

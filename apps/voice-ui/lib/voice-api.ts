@@ -11,6 +11,35 @@ export type RiskFactorOption = {
 export const VOICE_API_URL =
   process.env.NEXT_PUBLIC_VOICE_API_URL ?? "http://localhost:7860"
 
+export type VoiceReadiness = {
+  ready: boolean
+  detail: string
+  indexed_documents?: number
+  indexed_procedures?: string[]
+  missing_protocols?: string[]
+}
+
+export async function fetchVoiceReadiness(): Promise<VoiceReadiness> {
+  const response = await fetch(`${VOICE_API_URL}/api/readiness`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  })
+
+  if (response.ok) {
+    return (await response.json()) as VoiceReadiness
+  }
+
+  let detail = "El agente de voz no está listo. Ejecute la ingesta inicial del corpus."
+  try {
+    const body = (await response.json()) as { detail?: string }
+    if (body.detail) detail = body.detail
+  } catch {
+    // Keep default message when the backend returns non-JSON.
+  }
+
+  return { ready: false, detail }
+}
+
 export async function fetchProcedureOptions(): Promise<ProcedureOption[]> {
   const response = await fetch("/api/procedures", {
     method: "GET",

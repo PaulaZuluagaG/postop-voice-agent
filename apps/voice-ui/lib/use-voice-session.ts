@@ -7,7 +7,7 @@ import { SmallWebRTCTransport } from "@pipecat-ai/small-webrtc-transport"
 import type { PatientData } from "@/components/intake-form"
 import type { Message } from "@/components/transcript"
 import type { CallSummary } from "@/lib/call-summary"
-import { VOICE_API_URL } from "@/lib/voice-api"
+import { VOICE_API_URL, fetchVoiceReadiness } from "@/lib/voice-api"
 
 type Speaker = "agent" | "patient" | null
 
@@ -49,6 +49,29 @@ export function useVoiceSession(patient: PatientData) {
   const [connecting, setConnecting] = useState(false)
   const [callSummary, setCallSummary] = useState<CallSummary | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
+  const [voiceReady, setVoiceReady] = useState(false)
+  const [readinessDetail, setReadinessDetail] = useState<string | null>(null)
+  const [readinessLoading, setReadinessLoading] = useState(true)
+
+  const refreshReadiness = useCallback(async () => {
+    setReadinessLoading(true)
+    try {
+      const readiness = await fetchVoiceReadiness()
+      setVoiceReady(readiness.ready)
+      setReadinessDetail(readiness.ready ? null : readiness.detail)
+    } catch {
+      setVoiceReady(false)
+      setReadinessDetail(
+        "No se pudo verificar el estado del agente. Confirme que el backend de voz está activo.",
+      )
+    } finally {
+      setReadinessLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshReadiness()
+  }, [refreshReadiness])
 
   const appendMessage = useCallback((role: "agent" | "patient", text: string) => {
     const trimmed = text.trim()
@@ -103,6 +126,30 @@ export function useVoiceSession(patient: PatientData) {
 
   const startCall = useCallback(async () => {
     if (connecting || inCall) return
+
+    setReadinessLoading(true)
+    let ready = false
+    let blockedDetail =
+      "El agente aún no está listo. Ejecute postop-ingest antes de iniciar la llamada."
+    try {
+      const readiness = await fetchVoiceReadiness()
+      ready = readiness.ready
+      blockedDetail = readiness.detail
+      setVoiceReady(readiness.ready)
+      setReadinessDetail(readiness.ready ? null : readiness.detail)
+    } catch {
+      blockedDetail =
+        "No se pudo verificar el estado del agente. Confirme que el backend de voz está activo."
+      setVoiceReady(false)
+      setReadinessDetail(blockedDetail)
+    } finally {
+      setReadinessLoading(false)
+    }
+
+    if (!ready) {
+      setError(blockedDetail)
+      return
+    }
 
     setConnecting(true)
     setError(null)
@@ -209,6 +256,9 @@ export function useVoiceSession(patient: PatientData) {
     error,
     callSummary,
     summaryLoading,
+    voiceReady,
+    readinessDetail,
+    readinessLoading,
     startCall,
     endCall,
   }

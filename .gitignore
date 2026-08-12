@@ -226,3 +226,5 @@ data/*.db
 # Runtime call logs
 storage/logs/*
 !storage/logs/calls/.gitkeep
+storage/protocols/*
+!storage/protocols/.gitkeep

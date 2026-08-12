@@ -29,6 +29,9 @@ export function PatientDashboard({
     error,
     callSummary,
     summaryLoading,
+    voiceReady,
+    readinessDetail,
+    readinessLoading,
     startCall,
     endCall,
   } = useVoiceSession(patient)
@@ -90,6 +93,11 @@ export function PatientDashboard({
         </section>
 
         <section className="flex flex-1 flex-col items-center justify-center gap-8 rounded-3xl border border-border bg-card px-6 py-10 shadow-sm">
+          {!voiceReady && !readinessLoading && readinessDetail ? (
+            <div className="w-full max-w-md rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-950 text-pretty">
+              {readinessDetail}
+            </div>
+          ) : null}
           {showEndedScreen ? (
             <div className="flex w-full max-w-sm flex-col items-center gap-6 text-center">
               <span className="flex size-20 items-center justify-center rounded-full bg-secondary text-primary">
@@ -118,7 +126,9 @@ export function PatientDashboard({
             <>
               <div className="text-center">
                 <p className="text-sm font-medium text-muted-foreground">
-                  {connecting
+                  {readinessLoading
+                    ? "Verificando disponibilidad del agente…"
+                    : connecting
                     ? "Conectando con María…"
                     : inCall
                       ? speaker === "agent"
@@ -126,7 +136,9 @@ export function PatientDashboard({
                         : speaker === "patient"
                           ? "Escuchando al paciente…"
                           : "Llamada en curso"
-                      : "Toca para iniciar tu revisión de hoy"}
+                      : voiceReady
+                        ? "Toca para iniciar tu revisión de hoy"
+                        : "Llamadas bloqueadas hasta completar la ingesta"}
                 </p>
                 {error && (
                   <p className="mt-2 text-sm font-medium text-destructive text-pretty">{error}</p>
@@ -136,7 +148,7 @@ export function PatientDashboard({
               <button
                 type="button"
                 onClick={inCall ? () => void endCall() : startCall}
-                disabled={connecting}
+                disabled={connecting || readinessLoading || (!inCall && !voiceReady)}
                 aria-label={inCall ? "Finalizar llamada" : "Iniciar llamada"}
                 className={`relative flex size-40 items-center justify-center rounded-full text-primary-foreground shadow-xl transition-all active:scale-95 disabled:cursor-wait disabled:opacity-80 ${
                   inCall

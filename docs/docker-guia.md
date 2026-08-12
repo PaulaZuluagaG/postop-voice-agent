@@ -94,9 +94,12 @@ curl -sf http://localhost:3000 > /dev/null && echo " Frontend paciente OK"
 curl -sf http://localhost:8080 > /dev/null && echo " Frontend admin OK"
 ```
 
-## 3. Ingesta inicial del corpus RAG
+## 3. Ingesta inicial del corpus RAG y protocolos
 
-Solo la primera vez (o tras borrar el volumen de Qdrant):
+En el primer arranque, Qdrant y `./storage/protocols/` están **vacíos**. Los protocolos
+clínicos se generan a partir de los PDFs indexados (RAG + Gemini); no vienen precargados.
+
+Solo la primera vez (o tras borrar volúmenes):
 
 ```bash
 docker compose --profile init run --rm ingest-init
@@ -116,7 +119,8 @@ docker compose exec backend-api postop-ingest --recreate
 
 2. **App paciente** → http://localhost:3000
    - Completa el formulario de registro
-   - Inicia la llamada de voz (micrófono del navegador)
+   - **Antes de `ingest-init`**, el botón de llamada permanece deshabilitado
+   - Tras la ingesta, inicia la llamada de voz (micrófono del navegador)
    - WebRTC negocia contra `http://localhost:7860` (Pipecat Small WebRTC)
 
 3. **Jupyter EDA** → http://localhost:8888
@@ -124,6 +128,7 @@ docker compose exec backend-api postop-ingest --recreate
    - Notebooks persisten en `./notebooks/`
 
 4. **Trazas de llamadas** → `./storage/logs/calls/<call_id>/`
+5. **Protocolos clínicos** → `./storage/protocols/<procedimiento>/protocol.json`
 
 ## Volúmenes persistentes
 
@@ -132,6 +137,7 @@ docker compose exec backend-api postop-ingest --recreate
 | `qdrant_data` | Índice vectorial Qdrant |
 | `hf_cache` | Caché Hugging Face (Granite + Kokoro) |
 | `./dataset/textos` | PDFs clínicos compartidos (admin sube, backend ingesta) |
+| `./storage/protocols` | Protocolos clínicos generados por `ingest-init` o upload admin (vacío al primer arranque) |
 | `./storage/logs` | Eventos y resúmenes de llamadas |
 | `./notebooks` | Notebooks Jupyter |
 | `./data` | Datasets `.xlsx` para análisis |
@@ -168,3 +174,5 @@ docker compose down -v
 | Admin 502 al subir PDF | Cuota Gemini o Qdrant caído | Revisar logs: `docker compose logs backend-api` |
 | Ingesta vacía | `dataset/textos` sin PDFs | Verificar bind mount y ejecutar `ingest-init` |
 | OCR no funciona | Tesseract ausente | Ya incluido en imagen backend (`tesseract-ocr-spa`) |
+| Protocolos vacíos tras `up` | Comportamiento esperado | Ejecutar `ingest-init`; los protocolos se crean al indexar PDFs |
+| Protocolos perdidos tras rebuild | Volumen no montado | Verificar `./storage/protocols`; regenerar con `ingest-init` o `postop-protocols` |

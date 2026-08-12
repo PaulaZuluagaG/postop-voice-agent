@@ -83,6 +83,12 @@ FROM runtime-base AS runtime
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/.cache /app/.cache
 
+RUN chmod +x /app/scripts/docker-entrypoint.sh
+
+ENV PROTOCOL_DIR=/app/storage/protocols
+
+ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
+
 HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=5 \
     CMD curl -f http://127.0.0.1:${API_PORT:-8000}/openapi.json || exit 1
 

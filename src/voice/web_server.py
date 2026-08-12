@@ -31,6 +31,7 @@ from core.exceptions import ConfigurationError
 from core.registration import registration_from_frontend
 from core.scenarios import list_procedure_options_from_disk, resolve_procedure_selection
 from knowledge.protocol.loader import list_risk_factors_for_procedure
+from knowledge.readiness import VoiceReadiness, assess_voice_readiness
 from voice.browser import build_webrtc_pipeline
 from voice.pipeline import create_orchestrator_and_session
 
@@ -54,9 +55,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     session_call_ids: dict[str, str] = {}
     webrtc_handler = SmallWebRTCRequestHandler()
 
+    def _readiness_payload() -> dict[str, object]:
+        readiness = assess_voice_readiness(settings)
+        return {
+            "ready": readiness.ready,
+            "detail": readiness.detail,
+            "indexed_documents": readiness.indexed_documents,
+            "indexed_procedures": list(readiness.indexed_procedures),
+            "missing_protocols": list(readiness.missing_protocols),
+        }
+
+    def _ensure_voice_ready() -> VoiceReadiness:
+        readiness = assess_voice_readiness(settings)
+        if not readiness.ready:
+            raise HTTPException(status_code=503, detail=readiness.detail)
+        return readiness
+
     @app.get("/status")
-    async def status() -> dict[str, str]:
-        return {"status": "ready", "transport": "webrtc"}
+    async def status() -> dict[str, object]:
+        readiness = assess_voice_readiness(settings)
+        return {
+            "status": "ready" if readiness.ready else "awaiting_ingest",
+            "transport": "webrtc",
+            "voice_ready": readiness.ready,
+            "detail": readiness.detail,
+        }
+
+    @app.get("/api/readiness")
+    def voice_readiness() -> dict[str, object]:
+        payload = _readiness_payload()
+        if not payload["ready"]:
+            raise HTTPException(status_code=503, detail=str(payload["detail"]))
+        return payload
 
     @app.get("/api/procedures")
     def list_procedures() -> list[dict[str, str]]:
@@ -78,6 +108,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/start")
     async def start_agent(request: Request) -> dict[str, Any]:
+        _ensure_voice_ready()
+
         try:
             payload = await request.json()
         except Exception:
@@ -136,6 +168,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         background_tasks: BackgroundTasks,
         session_id: str | None = None,
     ) -> dict[str, str]:
+        _ensure_voice_ready()
         patient_payload = _resolve_patient_payload(request, active_sessions, session_id)
 
         async def webrtc_connection_callback(connection: SmallWebRTCConnection) -> None:

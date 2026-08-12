@@ -32,6 +32,7 @@ services:
       QDRANT_HOST: qdrant-db
       QDRANT_PORT: 6333
       TEXTOS_DIR: /app/dataset/textos
+      PROTOCOL_DIR: /app/storage/protocols
       CALLS_LOG_DIR: /app/storage/logs/calls
       API_HOST: 0.0.0.0
       API_PORT: 8000
@@ -40,6 +41,7 @@ services:
       - "${API_PORT:-8000}:8000"
     volumes:
       - ./dataset/textos:/app/dataset/textos
+      - ./storage/protocols:/app/storage/protocols
       - ./storage/logs:/app/storage/logs
       - hf_cache:/app/.cache/huggingface
     depends_on:
@@ -67,6 +69,7 @@ services:
       QDRANT_HOST: qdrant-db
       QDRANT_PORT: 6333
       TEXTOS_DIR: /app/dataset/textos
+      PROTOCOL_DIR: /app/storage/protocols
       CALLS_LOG_DIR: /app/storage/logs/calls
       VOICE_WEB_HOST: 0.0.0.0
       VOICE_WEB_PORT: 7860
@@ -76,6 +79,7 @@ services:
       - "${VOICE_WEB_PORT:-7860}:7860"
     volumes:
       - ./dataset/textos:/app/dataset/textos
+      - ./storage/protocols:/app/storage/protocols
       - ./storage/logs:/app/storage/logs
       - hf_cache:/app/.cache/huggingface
     depends_on:
@@ -164,9 +168,11 @@ services:
       QDRANT_HOST: qdrant-db
       QDRANT_PORT: 6333
       TEXTOS_DIR: /app/dataset/textos
+      PROTOCOL_DIR: /app/storage/protocols
     command: ["postop-ingest", "--recreate"]
     volumes:
       - ./dataset/textos:/app/dataset/textos
+      - ./storage/protocols:/app/storage/protocols
       - hf_cache:/app/.cache/huggingface
     depends_on:
       qdrant-db:
