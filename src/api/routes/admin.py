@@ -7,9 +7,9 @@ import logging
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from google.api_core.exceptions import GoogleAPIError, ResourceExhausted
 
+from agent.traceability.calls import CallLogService
 from api.auth import require_admin_token
 from api.schemas import CallListItem, DocumentItem, ProcedureSuggestion, ProcedureTypeOption
-from api.services.calls import CallLogService
 from api.services.documents import (
     DocumentNotFoundError,
     DocumentService,

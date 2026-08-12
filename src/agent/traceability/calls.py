@@ -15,7 +15,7 @@ from core.models import CallSummary
 
 
 class CallLogService:
-    """Load call summaries from logs/calls/*/summary/events.json."""
+    """Load call summaries from storage/logs/calls/*/summary/events.json."""
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()

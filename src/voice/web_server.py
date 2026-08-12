@@ -25,12 +25,12 @@ from pipecat.transports.smallwebrtc.request_handler import (  # noqa: E402
 )
 from pipecat.workers.runner import WorkerRunner  # noqa: E402
 
-from api.services.calls import CallLogService
+from agent.traceability.calls import CallLogService
 from core.config import Settings, get_settings
 from core.exceptions import ConfigurationError
+from core.registration import registration_from_frontend
 from core.scenarios import list_procedure_options_from_disk, resolve_procedure_selection
 from knowledge.protocol.loader import list_risk_factors_for_procedure
-from scripts.patient_registration import registration_from_frontend
 from voice.browser import build_webrtc_pipeline
 from voice.pipeline import create_orchestrator_and_session
 

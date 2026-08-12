@@ -19,12 +19,12 @@ from pipecat.workers.runner import WorkerRunner  # noqa: E402
 from core.config import get_settings
 from core.exceptions import ConfigurationError, PostOpError
 from core.models import ProcedureScenario
-from core.scenarios import SCENARIO_OPTIONS
-from scripts.patient_registration import (
+from core.registration import (
     PatientRegistration,
     prompt_patient_registration,
     registration_from_args,
 )
+from core.scenarios import SCENARIO_OPTIONS
 from voice.pipeline import (
     VoiceSession,
     build_text_pipeline,
@@ -121,7 +121,7 @@ async def _run_session(session: VoiceSession) -> int:
     print(f"Severidad: {summary.severity.value}")
     print(f"Alerta: {summary.alert_triggered}")
     print(f"Turnos: {summary.turn_count}")
-    print(f"Log: logs/calls/{summary.call_id}/summary/events.json")
+    print(f"Log: {get_settings().calls_log_dir / summary.call_id / 'summary' / 'events.json'}")
     return 0
 
 

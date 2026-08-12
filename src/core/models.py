@@ -203,6 +203,7 @@ class CallSessionState(BaseModel):
     current_severity: SeverityLevel = SeverityLevel.GREEN
     alert_triggered: bool = False
     call_closed: bool = False
+    call_close_logged: bool = False
     last_closed_reason: str | None = None
     turn_count: int = 0
     turns: list[TurnRecord] = Field(default_factory=list)

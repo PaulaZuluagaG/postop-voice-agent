@@ -265,10 +265,10 @@ class DocumentService:
         ):
             raise DuplicateDocumentError(
                 f"El documento {Path(file_name).name} ya existe en "
-                f"dataset/textos/{procedure_folder}/."
+                f"data/textos/{procedure_folder}/."
             )
         raise DuplicateDocumentError(
-            f"El documento {Path(file_name).name} ya existe en dataset/textos/{rel.parent}."
+            f"El documento {Path(file_name).name} ya existe en data/textos/{rel.parent}."
         )
 
     def _remove_pdf_from_disk(self, source: SourceAggregate) -> None:

@@ -1,0 +1,42 @@
+# Git & IDE
+.git
+.gitignore
+.idea
+.cursor
+*.md
+!README.md
+
+# Python
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+htmlcov
+.coverage
+
+# Node
+**/node_modules
+**/.next
+**/out
+
+# Runtime data (mounted as volumes)
+logs/
+storage/logs/
+dataset/textos/**/*.pdf
+data/textos/**/*.pdf
+
+# Secrets & local env
+.env
+.env.*
+!.env.example
+
+# Large / generated artifacts
+*.xlsx
+notebooks/.ipynb_checkpoints
+
+# Duplicate / legacy trees
+voice-ui/
+scripts/maria-clinical-agent/
+admin/

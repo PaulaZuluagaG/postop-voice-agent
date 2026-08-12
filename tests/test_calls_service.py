@@ -1,8 +1,8 @@
 from pathlib import Path
 from uuid import uuid4
 
+from agent.traceability.calls import CallLogService
 from agent.traceability.logger import CallTraceLogger
-from api.services.calls import CallLogService
 from core.config import Settings
 from core.models import CallSummary, ProcedureScenario, SeverityLevel
 
@@ -96,7 +96,7 @@ def test_call_log_service_rewrites_source_ids_in_clinical_summary(
     )
 
     monkeypatch.setattr(
-        "api.services.calls.resolve_source_labels",
+        "agent.traceability.calls.resolve_source_labels",
         lambda source_ids, settings=None: {"src_abc123": "guia_apendicitis.pdf"},
     )
 

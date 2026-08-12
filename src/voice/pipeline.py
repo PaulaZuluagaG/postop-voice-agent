@@ -18,7 +18,7 @@ from pipecat.transports.local.audio import LocalAudioTransport, LocalAudioTransp
 
 from agent.orchestrator import ConversationOrchestrator
 from core.config import Settings, get_settings
-from scripts.patient_registration import PatientRegistration
+from core.registration import PatientRegistration
 from voice.processors.console_input import ConsoleTextInputProcessor
 from voice.services.kokoro_tts import KokoroTTSService
 from voice.services.postop_llm import PostOpLLMService

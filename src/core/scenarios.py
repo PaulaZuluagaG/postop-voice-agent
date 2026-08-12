@@ -152,7 +152,7 @@ def list_procedure_folders(textos_dir: Path) -> list[str]:
 
 
 def list_scenarios_from_textos(textos_dir: Path) -> list[str]:
-    """List procedure ids from subfolders in ``dataset/textos``."""
+    """List procedure ids from subfolders in ``data/textos``."""
     return list_procedure_folders(textos_dir)
 
 
@@ -179,7 +179,7 @@ def procedure_display_label(procedure_id: str, *, textos_dir: Path | None = None
 
 
 def folder_display_label(folder_name: str, *, textos_dir: Path | None = None) -> str:
-    """Human-readable label for a `dataset/textos` folder."""
+    """Human-readable label for a `data/textos` folder."""
     return procedure_display_label(normalize_procedure_id(folder_name), textos_dir=textos_dir)
 
 

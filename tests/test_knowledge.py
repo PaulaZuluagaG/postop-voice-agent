@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from core.config import get_settings
 from core.exceptions import InsufficientTextError
 from core.models import ProcedureScenario
 from core.scenarios import map_folder_to_scenario
@@ -51,7 +52,7 @@ def test_parse_pdf_skips_insufficient_text(tmp_path: Path) -> None:
 
 
 def test_parse_pdf_extracts_metadata() -> None:
-    pdf_dir = Path("dataset/textos/cholecystitis")
+    pdf_dir = get_settings().textos_dir / "cholecystitis"
     pdfs = list(pdf_dir.glob("*.pdf"))
     if not pdfs:
         pytest.skip("No PDF fixtures available")

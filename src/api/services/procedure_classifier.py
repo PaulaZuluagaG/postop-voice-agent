@@ -84,7 +84,7 @@ Analiza el extracto y responde JSON:
 
 Reglas:
 - suggested_procedure: slug en inglés en kebab-case (ej. appendicitis, hernia-repair).
-  Úsalo como nombre de carpeta bajo dataset/textos/.
+  Úsalo como nombre de carpeta bajo data/textos/.
 - procedure_label_es: nombre clínico en español para mostrar al usuario
   (ej. "Apendicitis", "Reparación de hernia").
 - Si el documento corresponde claramente a un procedure existente, devuelve ese slug

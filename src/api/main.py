@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from api.routes.admin import router as admin_router
 from core.config import get_settings
+from core.paths import project_root
 
-STATIC_DIR = Path(__file__).resolve().parent.parent / "admin" / "static"
+STATIC_DIR = project_root() / "apps" / "admin-ui"
 
 
 def create_app() -> FastAPI:

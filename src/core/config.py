@@ -6,6 +6,8 @@ from pathlib import Path
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from core.paths import project_root, resolve_project_path
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -64,7 +66,7 @@ class Settings(BaseSettings):
     protocol_compact_max_symptoms: int = 6
     protocol_skip_existing: bool = True
     protocol_generation_delay_seconds: float = 15.0
-    protocol_dir: Path = Path("knowledge/protocol")
+    protocol_dir: Path = project_root() / "src" / "knowledge" / "protocol"
 
     # Voz (Pipecat + Deepgram + Kokoro)
     deepgram_api_key: str = ""
@@ -83,7 +85,7 @@ class Settings(BaseSettings):
     rag_context_max_turns: int = 1
     alert_score_threshold: int = 15
     yellow_score_threshold: int = 8
-    calls_log_dir: Path = Path("logs/calls")
+    calls_log_dir: Path = project_root() / "storage" / "logs" / "calls"
 
     # Admin API
     admin_token: str = ""
@@ -100,7 +102,7 @@ class Settings(BaseSettings):
     voice_web_cors_origin_regex: str = r"http://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d+"
 
     # Dataset
-    textos_dir: Path = Path("dataset/textos")
+    textos_dir: Path = project_root() / "data" / "textos"
 
     # OCR (scanned PDF pages — requires Tesseract)
     ocr_enabled: bool = True
@@ -118,7 +120,7 @@ class Settings(BaseSettings):
     @field_validator("calls_log_dir", "textos_dir", "protocol_dir", mode="before")
     @classmethod
     def _coerce_path(cls, value: str | Path) -> Path:
-        return Path(value)
+        return resolve_project_path(value)
 
     @property
     def qdrant_url(self) -> str:

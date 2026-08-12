@@ -591,7 +591,6 @@ class ConversationOrchestrator:
             agent_response = ALERT_MESSAGE
             session.alert_triggered = True
             severity = SeverityLevel.RED
-            session.call_closed = True
 
         next_pending = pending_protocol_symptoms(session)
         if is_ambiguous_response(llm_output):
@@ -710,13 +709,14 @@ class ConversationOrchestrator:
 
     def close_call(self, call_id: UUID, *, reason: str = "manual_close") -> CallSummary:
         session = self.get_session(call_id)
-        if session.call_closed:
+        if session.call_close_logged:
             return self._build_summary(session, session.last_closed_reason or reason)
 
         session.call_closed = True
         session.last_closed_reason = reason
         summary = self._build_summary(session, reason)
         self._trace.log_call_close(call_id, summary)
+        session.call_close_logged = True
         return summary
 
     def _apply_risk_factor_bonus(self, session: CallSessionState) -> None:

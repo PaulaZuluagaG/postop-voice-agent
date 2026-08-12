@@ -3,7 +3,7 @@ from datetime import date
 from agent.decision.intake import parse_postop_timepoint
 from agent.orchestrator import ConversationOrchestrator
 from core.models import ProcedureScenario
-from scripts.patient_registration import registration_from_args, registration_from_frontend
+from core.registration import registration_from_args, registration_from_frontend
 
 
 def test_registration_from_args_resolves_surgery_date() -> None:
