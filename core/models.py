@@ -5,7 +5,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 class SeverityLevel(StrEnum):
@@ -39,15 +39,6 @@ class ResponseCategory(StrEnum):
     ALERTA_IMPLICITA = "ALERTA_IMPLICITA"
     FUERA_DE_TONO = "FUERA_DE_TONO"
     NO_ENTIENDE = "NO_ENTIENDE"
-
-
-class ClinicalAxis(StrEnum):
-    DOLOR = "dolor"
-    HERIDA = "herida"
-    DIGESTIVO = "digestivo"
-    RESPIRACION = "respiracion"
-    MOVILIDAD = "movilidad"
-    NINGUNO = "ninguno"
 
 
 class YesNo(StrEnum):
@@ -108,20 +99,6 @@ def coerce_episode_count(value: object) -> int | None:
     return None
 
 
-def resolve_vomiting_count(
-    presence: YesNo | None,
-    episodes: int | None,
-) -> int | None:
-    """Map LLM vomiting facts to a single count for scoring."""
-    if episodes is not None:
-        return episodes
-    if presence == YesNo.SI:
-        return 1
-    if presence == YesNo.NO:
-        return 0
-    return None
-
-
 class ParsedPage(BaseModel):
     page_number: int
     text: str
@@ -160,72 +137,10 @@ class RetrievedChunk(TextChunk):
     score: float
 
 
-class PatientFacts(BaseModel):
-    pain: float | None = Field(default=None, ge=0, le=10)
-    fever_celsius: float | None = None
-    dyspnea: bool | None = None
-    bleeding: bool | None = None
-    vomiting_count: int | None = Field(default=None, ge=0)
-    confusion: bool | None = None
-
-
-class ClinicalFacts(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    dolor_0_10: float | None = Field(default=None, alias="DOLOR_0_10", ge=0, le=10)
-    fiebre_c: float | None = Field(default=None, alias="FIEBRE_C")
-    disnea: YesNo | None = Field(default=None, alias="DISNEA")
-    sangreado: YesNo | None = Field(default=None, alias="SANGREADO")
-    vomitos: YesNo | None = Field(default=None, alias="VOMITOS")
-    vomitos_episodios: int | None = Field(default=None, alias="VOMITOS_EPISODIOS", ge=0)
-    confusion: YesNo | None = Field(default=None, alias="CONFUSION")
-    procedimiento: str | None = Field(default=None, alias="PROCEDIMIENTO")
-    fecha_cirugia: str | None = Field(default=None, alias="FECHA_CIRUGIA")
-
-    @field_validator("dolor_0_10", "fiebre_c", mode="before")
-    @classmethod
-    def _coerce_numeric_fields(cls, value: object) -> object:
-        coerced = coerce_optional_float(value)
-        return coerced if coerced is not None else value
-
-    @field_validator("disnea", "sangreado", "confusion", "vomitos", mode="before")
-    @classmethod
-    def _coerce_yes_no_fields(cls, value: object) -> object:
-        coerced = coerce_yes_no(value)
-        return coerced if coerced is not None else value
-
-    @field_validator("vomitos_episodios", mode="before")
-    @classmethod
-    def _coerce_episode_count_field(cls, value: object) -> object:
-        coerced = coerce_episode_count(value)
-        return coerced if coerced is not None else value
-
-    def resolved_vomiting_count(self) -> int | None:
-        return resolve_vomiting_count(self.vomitos, self.vomitos_episodios)
-
-    def to_patient_facts(self) -> PatientFacts:
-        return PatientFacts(
-            pain=self.dolor_0_10,
-            fever_celsius=self.fiebre_c,
-            dyspnea=_yes_no_to_bool(self.disnea),
-            bleeding=_yes_no_to_bool(self.sangreado),
-            vomiting_count=self.resolved_vomiting_count(),
-            confusion=_yes_no_to_bool(self.confusion),
-        )
-
-
-def _yes_no_to_bool(value: YesNo | None) -> bool | None:
-    if value is None:
-        return None
-    return value == YesNo.SI
-
-
 class LLMTurnOutput(BaseModel):
     categoria: ResponseCategory
-    foco: ClinicalAxis = ClinicalAxis.NINGUNO
     foco_sintoma: str | None = None
     evidencia_suficiente: bool = False
-    hechos: ClinicalFacts = Field(default_factory=ClinicalFacts)
     sintomas: dict[str, float | str | None] = Field(default_factory=dict)
     texto_paciente: str
     pregunta: str | None = None
@@ -234,9 +149,6 @@ class LLMTurnOutput(BaseModel):
     @property
     def implicit_alert(self) -> bool:
         return self.categoria == ResponseCategory.ALERTA_IMPLICITA
-
-    def to_patient_facts(self) -> PatientFacts:
-        return self.hechos.to_patient_facts()
 
 
 class TurnTimings(BaseModel):
@@ -253,7 +165,7 @@ class TurnRecord(BaseModel):
     rag_query: str
     retrieved_chunks: list[RetrievedChunk] = Field(default_factory=list)
     llm_output: LLMTurnOutput | None = None
-    symptoms: PatientFacts = Field(default_factory=PatientFacts)
+    symptoms: dict[str, object] = Field(default_factory=dict)
     protocol_procedure: str = "general"
     symptom_id: str | None = None
     base_score: int = 0
@@ -282,13 +194,16 @@ class CallSessionState(BaseModel):
     protocol_symptoms: list[dict[str, object]] = Field(default_factory=list)
     protocol_thresholds: dict[str, int] = Field(default_factory=dict)
     protocol_alert_signs: list[str] = Field(default_factory=list)
-    covered_axes: set[ClinicalAxis] = Field(default_factory=set)
-    covered_symptoms: set[str] = Field(default_factory=set)
+    protocol_risk_factors: list[dict[str, object]] = Field(default_factory=list)
+    patient_comorbidities: list[str] = Field(default_factory=list)
+    risk_factor_bonus_applied: bool = False
+    covered_symptoms: set[str] = Field(default_factory=list)
     current_focal_symptom: str | None = None
     cumulative_score: int = 0
     current_severity: SeverityLevel = SeverityLevel.GREEN
     alert_triggered: bool = False
     call_closed: bool = False
+    last_closed_reason: str | None = None
     turn_count: int = 0
     turns: list[TurnRecord] = Field(default_factory=list)
     sources_used: set[str] = Field(default_factory=set)
@@ -301,10 +216,18 @@ class CallSummary(BaseModel):
     custom_procedure: str | None = None
     protocol_used: str = "general"
     postop_day: int
+    patient_name: str = "Paciente"
+    patient_id: str | None = None
     final_score: int
     severity: SeverityLevel
+    decision_label: str = "verde"
+    symptoms_reported: dict[str, object] = Field(default_factory=dict)
+    next_steps: str = ""
+    clinical_summary: str = ""
     alert_triggered: bool
     physician_escalated: bool = False
+    vigilancia_recomendada: bool = False
+    follow_up_recommended: bool = False
     sources_used: list[str]
     turn_count: int
     closed_reason: str

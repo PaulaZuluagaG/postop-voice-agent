@@ -78,6 +78,7 @@ class Settings(BaseSettings):
 
     # Agent
     max_turns_per_call: int = 8
+    risk_factor_score_bonus: int = 2
     conversation_history_max_turns: int = 3
     rag_context_max_turns: int = 1
     alert_score_threshold: int = 15
@@ -96,6 +97,7 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
+    voice_web_cors_origin_regex: str = r"http://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d+"
 
     # Dataset
     textos_dir: Path = Path("dataset/textos")
@@ -105,6 +107,13 @@ class Settings(BaseSettings):
     ocr_languages: str = "spa+eng"
     ocr_dpi: int = 200
     ocr_min_chars: int = 80
+
+    @field_validator("voice_web_cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, value: str | list[str]) -> list[str]:
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
 
     @field_validator("calls_log_dir", "textos_dir", "protocol_dir", mode="before")
     @classmethod

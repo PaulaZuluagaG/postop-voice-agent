@@ -29,6 +29,12 @@ class ProtocolThresholds(BaseModel):
     rojo: int
 
 
+class RiskFactorDefinition(BaseModel):
+    id: str
+    label: str
+    fuentes: list[str] = Field(default_factory=list)
+
+
 class PostOpProtocol(BaseModel):
     procedure: str
     version: str = "1.0"
@@ -37,6 +43,7 @@ class PostOpProtocol(BaseModel):
     symptoms: list[SymptomDefinition]
     thresholds: ProtocolThresholds
     alert_signs: list[str] = Field(default_factory=list)
+    risk_factors: list[RiskFactorDefinition] = Field(default_factory=list)
 
     @classmethod
     def from_llm_output(
@@ -50,6 +57,9 @@ class PostOpProtocol(BaseModel):
         payload["version"] = "1.0"
         payload["generated_at"] = datetime.now(tz=UTC)
         payload["source_ids"] = sorted(set(source_ids))
+        risk_factors = payload.get("risk_factors") or []
+        if isinstance(risk_factors, list):
+            payload["risk_factors"] = risk_factors[:2]
         return cls.model_validate(payload)
 
 

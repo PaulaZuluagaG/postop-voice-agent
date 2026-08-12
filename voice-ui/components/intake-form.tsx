@@ -3,16 +3,29 @@
 import { useEffect, useMemo, useState } from "react"
 import { HeartPulse, ChevronDown, ArrowRight, Loader2 } from "lucide-react"
 
-import { fetchProcedureOptions, type ProcedureOption } from "@/lib/voice-api"
+import {
+  fetchProcedureOptions,
+  fetchRiskFactors,
+  type ProcedureOption,
+  type RiskFactorOption,
+} from "@/lib/voice-api"
 
 export type PatientData = {
   name: string
   patientId: string
-  surgeryDate: string
+  postopDay: number
   procedure: string
   procedureLabel: string
   customProcedure?: string
+  comorbidities: string[]
 }
+
+export const POSTOP_DAY_OPTIONS = [
+  { value: 1, label: "Día 1 — primer día postoperatorio" },
+  { value: 3, label: "Día 3 — inicio de recuperación" },
+  { value: 7, label: "Día 7 — primera semana" },
+  { value: 14, label: "Día 14 — dos semanas" },
+] as const
 
 const OTHER_VALUE = "other"
 
@@ -20,14 +33,17 @@ export function IntakeForm({ onStart }: { onStart: (data: PatientData) => void }
   const [form, setForm] = useState<PatientData>({
     name: "",
     patientId: "",
-    surgeryDate: "",
+    postopDay: 0,
     procedure: "",
     procedureLabel: "",
     customProcedure: "",
+    comorbidities: [],
   })
   const [errors, setErrors] = useState<Partial<Record<keyof PatientData, boolean>>>({})
   const [procedures, setProcedures] = useState<ProcedureOption[]>([])
+  const [riskFactors, setRiskFactors] = useState<RiskFactorOption[]>([])
   const [loadingProcedures, setLoadingProcedures] = useState(true)
+  const [loadingRiskFactors, setLoadingRiskFactors] = useState(false)
   const [procedureError, setProcedureError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -52,11 +68,60 @@ export function IntakeForm({ onStart }: { onStart: (data: PatientData) => void }
     }
   }, [])
 
+  useEffect(() => {
+    if (!form.procedure || form.procedure === OTHER_VALUE) {
+      setRiskFactors([])
+      setForm((current) => ({ ...current, comorbidities: [] }))
+      return
+    }
+
+    let cancelled = false
+    setLoadingRiskFactors(true)
+    fetchRiskFactors(form.procedure)
+      .then((options) => {
+        if (cancelled) return
+        setRiskFactors(options)
+        setForm((current) => ({
+          ...current,
+          comorbidities: current.comorbidities.filter((id) =>
+            options.some((option) => option.id === id),
+          ),
+        }))
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRiskFactors(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [form.procedure])
+
+  const comorbiditiesEnabled = useMemo(() => {
+    return Boolean(form.procedure) && form.procedure !== OTHER_VALUE && riskFactors.length > 0
+  }, [form.procedure, riskFactors.length])
+
+  const comorbiditiesHint = useMemo(() => {
+    if (!form.procedure) {
+      return "Seleccione un procedimiento para ver comorbilidades disponibles."
+    }
+    if (form.procedure === OTHER_VALUE) {
+      return "No aplica para procedimiento Otro."
+    }
+    if (loadingRiskFactors) {
+      return "Cargando comorbilidades…"
+    }
+    if (riskFactors.length === 0) {
+      return "Este procedimiento no tiene comorbilidades configuradas."
+    }
+    return "Opcional. Puede seleccionar una o más."
+  }, [form.procedure, loadingRiskFactors, riskFactors.length])
+
   const isComplete = useMemo(() => {
     const base =
       form.name.trim() &&
       form.patientId.trim() &&
-      form.surgeryDate.trim() &&
+      POSTOP_DAY_OPTIONS.some((option) => option.value === form.postopDay) &&
       form.procedure.trim()
     if (!base) return false
     if (form.procedure === OTHER_VALUE) {
@@ -77,8 +142,19 @@ export function IntakeForm({ onStart }: { onStart: (data: PatientData) => void }
       procedure: value,
       procedureLabel: label,
       customProcedure: value === OTHER_VALUE ? f.customProcedure ?? "" : "",
+      comorbidities: [],
     }))
     setErrors((e) => ({ ...e, procedure: false, customProcedure: false }))
+  }
+
+  function toggleComorbidity(id: string) {
+    if (!comorbiditiesEnabled || loadingRiskFactors) return
+    setForm((current) => ({
+      ...current,
+      comorbidities: current.comorbidities.includes(id)
+        ? current.comorbidities.filter((item) => item !== id)
+        : [...current.comorbidities, id],
+    }))
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -86,6 +162,13 @@ export function IntakeForm({ onStart }: { onStart: (data: PatientData) => void }
     const next: Partial<Record<keyof PatientData, boolean>> = {}
     ;(Object.keys(form) as (keyof PatientData)[]).forEach((k) => {
       if (k === "customProcedure" && form.procedure !== OTHER_VALUE) return
+      if (k === "comorbidities") return
+      if (k === "postopDay") {
+        if (!POSTOP_DAY_OPTIONS.some((option) => option.value === form.postopDay)) {
+          next[k] = true
+        }
+        return
+      }
       if (!String(form[k] ?? "").trim()) next[k] = true
     })
     if (Object.keys(next).length > 0) {
@@ -133,15 +216,28 @@ export function IntakeForm({ onStart }: { onStart: (data: PatientData) => void }
           />
         </Field>
 
-        <Field label="Fecha de cirugía" htmlFor="surgeryDate" error={errors.surgeryDate}>
-          <input
-            id="surgeryDate"
-            type="date"
-            value={form.surgeryDate}
-            onChange={(e) => update("surgeryDate", e.target.value)}
-            max={new Date().toISOString().split("T")[0]}
-            className="input-base"
-          />
+        <Field label="Día postoperatorio" htmlFor="postopDay" error={errors.postopDay}>
+          <div className="relative">
+            <select
+              id="postopDay"
+              value={form.postopDay || ""}
+              onChange={(e) => update("postopDay", Number(e.target.value))}
+              className={`input-base appearance-none pr-10 ${form.postopDay ? "" : "text-muted-foreground"}`}
+            >
+              <option value="" disabled>
+                Selecciona el día de seguimiento
+              </option>
+              {POSTOP_DAY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value} className="text-foreground">
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+          </div>
         </Field>
 
         <Field label="Tipo de procedimiento" htmlFor="procedure" error={errors.procedure}>
@@ -195,6 +291,54 @@ export function IntakeForm({ onStart }: { onStart: (data: PatientData) => void }
             />
           </Field>
         )}
+
+        <Field label="Comorbilidades" htmlFor="comorbidities">
+          <div
+            id="comorbidities"
+            role="group"
+            aria-describedby="comorbidities-hint"
+            className={`flex flex-col gap-2 ${!comorbiditiesEnabled || loadingRiskFactors ? "opacity-60" : ""}`}
+          >
+            {riskFactors.length > 0 ? (
+              riskFactors.map((option) => {
+                const selected = form.comorbidities.includes(option.id)
+                return (
+                  <label
+                    key={option.id}
+                    htmlFor={`comorbidity-${option.id}`}
+                    className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 transition-colors ${
+                      selected
+                        ? "border-primary bg-primary/5"
+                        : "border-border bg-card hover:border-primary/40"
+                    } ${!comorbiditiesEnabled || loadingRiskFactors ? "cursor-not-allowed" : ""}`}
+                  >
+                    <input
+                      id={`comorbidity-${option.id}`}
+                      type="checkbox"
+                      checked={selected}
+                      disabled={!comorbiditiesEnabled || loadingRiskFactors}
+                      onChange={() => toggleComorbidity(option.id)}
+                      className="size-4 shrink-0 accent-[var(--primary)]"
+                    />
+                    <span className="text-sm leading-snug text-foreground">{option.label}</span>
+                  </label>
+                )
+              })
+            ) : (
+              <p className="rounded-2xl border border-dashed border-border bg-card px-4 py-3 text-sm text-muted-foreground">
+                {comorbiditiesHint}
+              </p>
+            )}
+          </div>
+          {riskFactors.length > 0 && (
+            <span id="comorbidities-hint" className="text-xs text-muted-foreground">
+              {comorbiditiesHint}
+              {form.comorbidities.length > 0
+                ? ` · ${form.comorbidities.length} seleccionada(s)`
+                : ""}
+            </span>
+          )}
+        </Field>
 
         <button
           type="submit"

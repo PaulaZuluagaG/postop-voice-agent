@@ -28,7 +28,9 @@ def test_legacy_protocol_directory_names() -> None:
 
 
 def test_list_procedure_folders_deduplicates_aliases(tmp_path: Path) -> None:
-    (tmp_path / "colorectal-cancer").mkdir()
+    canonical = tmp_path / "colorectal-cancer"
+    canonical.mkdir()
+    (canonical / "guide.pdf").write_bytes(b"%PDF")
     (tmp_path / "colorectal cancer").mkdir()
 
     folders = list_procedure_folders(tmp_path)

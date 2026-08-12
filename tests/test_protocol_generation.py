@@ -263,6 +263,42 @@ def test_protocol_gemini_client_parses_json_response() -> None:
     assert kwargs["max_output_tokens"] == 8192
 
 
+def test_protocol_gemini_client_filters_risk_factor_sources() -> None:
+    settings = MagicMock()
+    settings.gemini_api_key = "test-key"
+    settings.gemini_temperature = 0.0
+    settings.protocol_max_output_tokens = 8192
+    settings.protocol_fragment_max_chars = 1200
+    settings.protocol_compact_fragment_max_chars = 600
+    settings.protocol_compact_max_symptoms = 6
+    settings.max_turns_per_call = 8
+    settings.protocol_max_symptoms = 8
+
+    client = ProtocolGeminiClient(settings)
+    payload = {
+        **_sample_protocol_payload(),
+        "risk_factors": [
+            {
+                "id": "diabetes_tipo_2",
+                "label": "Diabetes tipo 2",
+                "fuentes": ["doc_apendicitis_01"],
+            },
+            {
+                "id": "consumo_de_tabaco",
+                "label": "Consumo de tabaco",
+                "fuentes": ["src_inventado"],
+            },
+        ],
+    }
+
+    with patch.object(client._gemini, "generate_json", return_value=payload):
+        protocol = client.generate_protocol_json("appendicitis", [_sample_chunk()])
+
+    assert len(protocol.risk_factors) == 1
+    assert protocol.risk_factors[0].id == "diabetes_tipo_2"
+    assert protocol.risk_factors[0].fuentes == ["doc_apendicitis_01"]
+
+
 def test_protocol_gemini_client_compact_mode_uses_shorter_fragments() -> None:
     settings = MagicMock()
     settings.gemini_api_key = "test-key"
@@ -291,6 +327,9 @@ def test_build_protocol_system_prompt_uses_max_symptoms() -> None:
     prompt = build_protocol_system_prompt(max_symptoms=8)
     assert "Máximo 8 síntomas" in prompt
     assert "entre 3 y 8 síntomas" in prompt
+    assert "diabetes_tipo_2" in prompt
+    assert "NO incluyas hábitos" in prompt
+    assert '"fuentes": ["source_id"]' in prompt
 
 
 def test_build_protocol_user_prompt_compact_suffix() -> None:

@@ -80,16 +80,38 @@ class ProtocolGeminiClient:
 
         source_ids = sorted({chunk.source_id for chunk in fragments if chunk.source_id})
         protocol = PostOpProtocol.from_llm_output(payload, source_ids=source_ids)
-        return self._validate_symptom_sources(protocol, fragments)
+        return self._validate_protocol_sources(protocol, fragments)
+
+    @staticmethod
+    def _validate_protocol_sources(
+        protocol: PostOpProtocol,
+        fragments: list[RetrievedChunk],
+    ) -> PostOpProtocol:
+        valid_ids = {chunk.source_id for chunk in fragments if chunk.source_id}
+
+        updated_symptoms = []
+        for symptom in protocol.symptoms:
+            filtered = [source_id for source_id in symptom.fuentes if source_id in valid_ids]
+            updated_symptoms.append(symptom.model_copy(update={"fuentes": filtered}))
+
+        updated_risk_factors = []
+        for risk_factor in protocol.risk_factors:
+            filtered = [source_id for source_id in risk_factor.fuentes if source_id in valid_ids]
+            if not filtered:
+                continue
+            updated_risk_factors.append(risk_factor.model_copy(update={"fuentes": filtered}))
+
+        return protocol.model_copy(
+            update={
+                "symptoms": updated_symptoms,
+                "risk_factors": updated_risk_factors,
+            }
+        )
 
     @staticmethod
     def _validate_symptom_sources(
         protocol: PostOpProtocol,
         fragments: list[RetrievedChunk],
     ) -> PostOpProtocol:
-        valid_ids = {chunk.source_id for chunk in fragments}
-        updated_symptoms = []
-        for symptom in protocol.symptoms:
-            filtered = [source_id for source_id in symptom.fuentes if source_id in valid_ids]
-            updated_symptoms.append(symptom.model_copy(update={"fuentes": filtered}))
-        return protocol.model_copy(update={"symptoms": updated_symptoms})
+        """Backward-compatible alias for tests and callers."""
+        return ProtocolGeminiClient._validate_protocol_sources(protocol, fragments)

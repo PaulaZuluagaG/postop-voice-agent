@@ -94,6 +94,7 @@ def _empty_protocol_payload(procedure: str) -> dict:
         "symptoms": [],
         "thresholds": ProtocolThresholds(verde=0, amarillo=8, rojo=15).model_dump(),
         "alert_signs": [],
+        "risk_factors": [],
     }
 
 

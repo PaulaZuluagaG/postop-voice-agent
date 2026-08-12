@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from agent.decision.protocol_triage import extract_symptom_values
+from agent.decision.session_protocol import protocol_from_session
 from core.config import Settings
-from core.models import CallSessionState, ClinicalFacts, YesNo
+from core.models import CallSessionState, YesNo, coerce_yes_no
+from knowledge.protocol.models import SymptomDefinition
 
 
 @dataclass(frozen=True)
@@ -18,51 +21,45 @@ class CompactMemoryView:
     omitted_turn_count: int
 
 
-_FACT_FIELDS: tuple[tuple[str, str], ...] = (
-    ("dolor_0_10", "Dolor"),
-    ("fiebre_c", "Fiebre"),
-    ("disnea", "Disnea"),
-    ("sangreado", "Sangrado"),
-    ("vomitos", "Vómitos (presencia)"),
-    ("vomitos_episodios", "Vómitos (episodios)"),
-    ("confusion", "Confusión"),
-)
-
-
-def merge_session_facts(session: CallSessionState) -> ClinicalFacts:
-    """Merge structured facts from all completed turns (latest value wins)."""
-    merged = ClinicalFacts()
-    updates: dict[str, object] = {}
+def merge_session_symptom_values(session: CallSessionState) -> dict[str, object]:
+    """Merge protocol symptom values from all completed turns (latest value wins)."""
+    merged: dict[str, object] = {}
     for turn in session.turns:
         if turn.llm_output is None:
             continue
-        facts = turn.llm_output.hechos
-        for field_name, _label in _FACT_FIELDS:
-            value = getattr(facts, field_name)
-            if value is not None:
-                updates[field_name] = value
-    if updates:
-        merged = merged.model_copy(update=updates)
+        for symptom_id, value in extract_symptom_values(turn.llm_output).items():
+            merged[symptom_id] = value
     return merged
 
 
-def format_accumulated_facts(facts: ClinicalFacts) -> str:
-    """Render merged clinical facts as a compact bullet list."""
+def _format_symptom_value(symptom: SymptomDefinition | None, value: object) -> str:
+    if symptom is not None and symptom.type == "binary":
+        yn = coerce_yes_no(value)
+        if yn == YesNo.SI:
+            return "sí"
+        if yn == YesNo.NO:
+            return "no"
+    return str(value)
+
+
+def format_accumulated_symptoms(session: CallSessionState) -> str:
+    """Render merged protocol symptom values as a compact bullet list."""
+    values = merge_session_symptom_values(session)
+    if not values:
+        return "- (ningún síntoma registrado aún)"
+
+    protocol = protocol_from_session(session)
+    symptoms_by_id = {symptom.id: symptom for symptom in protocol.symptoms}
     lines: list[str] = []
-    for field_name, label in _FACT_FIELDS:
-        value = getattr(facts, field_name)
-        if value is None:
-            continue
-        if field_name == "dolor_0_10":
-            lines.append(f"- {label}: {value}/10")
-        elif field_name == "fiebre_c":
-            lines.append(f"- {label}: {value} °C")
-        elif field_name in {"disnea", "sangreado", "confusion", "vomitos"}:
-            assert isinstance(value, YesNo)
-            lines.append(f"- {label}: {'sí' if value == YesNo.SI else 'no'}")
+    for symptom_id in sorted(values):
+        value = values[symptom_id]
+        symptom = symptoms_by_id.get(symptom_id)
+        label = symptom_id
+        if symptom is not None and symptom.type == "numeric" and symptom_id.startswith("dolor"):
+            lines.append(f"- {label}: {_format_symptom_value(symptom, value)}/10")
         else:
-            lines.append(f"- {label}: {value}")
-    return "\n".join(lines) if lines else "- (ningún hecho clínico registrado aún)"
+            lines.append(f"- {label}: {_format_symptom_value(symptom, value)}")
+    return "\n".join(lines)
 
 
 def _format_dialogue_lines(
@@ -95,13 +92,13 @@ def _format_omission_note(omitted_turn_count: int) -> str:
         return ""
     return (
         f"(Turnos 1-{omitted_turn_count} omitidos del historial; "
-        f"consulta hechos acumulados arriba.)"
+        f"consulta síntomas acumulados arriba.)"
     )
 
 
 def build_compact_memory(session: CallSessionState, settings: Settings) -> CompactMemoryView:
-    """Build LLM history, RAG context, and accumulated facts for one turn."""
-    facts_block = format_accumulated_facts(merge_session_facts(session))
+    """Build LLM history, RAG context, and accumulated symptoms for one turn."""
+    facts_block = format_accumulated_symptoms(session)
 
     llm_lines, llm_omitted = _format_dialogue_lines(
         session,

@@ -4,23 +4,20 @@ from __future__ import annotations
 
 from agent.memory.compact_memory import (
     build_compact_memory,
-    format_accumulated_facts,
-    merge_session_facts,
+    format_accumulated_symptoms,
+    merge_session_symptom_values,
 )
 from core.config import Settings
 from core.models import (
     CallSessionState,
-    ClinicalFacts,
     LLMTurnOutput,
     ResponseCategory,
     TurnRecord,
-    YesNo,
 )
+from tests.conftest import make_session
 
 
 def _session_with_turns(turn_count: int) -> CallSessionState:
-    from tests.conftest import make_session
-
     session = make_session()
     session.opening_message = "Hola, ¿cómo está su dolor del 0 al 10?"
     for index in range(turn_count):
@@ -33,7 +30,7 @@ def _session_with_turns(turn_count: int) -> CallSessionState:
                 rag_query="query",
                 llm_output=LLMTurnOutput(
                     categoria=ResponseCategory.RESPUESTA_VALIDA,
-                    hechos=ClinicalFacts(dolor_0_10=pain),
+                    sintomas={"dolor_abdominal": pain},
                     texto_paciente=f"Turno {index + 1}",
                     pregunta="¿Algún otro síntoma?",
                 ),
@@ -42,28 +39,42 @@ def _session_with_turns(turn_count: int) -> CallSessionState:
     return session
 
 
-def test_merge_session_facts_uses_latest_values() -> None:
+def test_merge_session_symptom_values_uses_latest_values() -> None:
     session = _session_with_turns(3)
     session.turns[-1].llm_output = LLMTurnOutput(
         categoria=ResponseCategory.RESPUESTA_VALIDA,
-        hechos=ClinicalFacts(dolor_0_10=8.0, disnea=YesNo.NO),
+        sintomas={"dolor_abdominal": 8.0, "fiebre": 38.2},
         texto_paciente="",
         pregunta="¿Fiebre?",
     )
 
-    facts = merge_session_facts(session)
+    values = merge_session_symptom_values(session)
 
-    assert facts.dolor_0_10 == 8.0
-    assert facts.disnea == YesNo.NO
+    assert values["dolor_abdominal"] == 8.0
+    assert values["fiebre"] == 38.2
 
 
-def test_format_accumulated_facts_renders_spanish_labels() -> None:
-    rendered = format_accumulated_facts(
-        ClinicalFacts(dolor_0_10=6.0, disnea=YesNo.NO, fiebre_c=38.2)
+def test_format_accumulated_symptoms_renders_protocol_ids() -> None:
+    session = make_session()
+    session.turns.append(
+        TurnRecord(
+            turn_number=1,
+            patient_input="38.2",
+            agent_response="Gracias.",
+            rag_query="query",
+            llm_output=LLMTurnOutput(
+                categoria=ResponseCategory.RESPUESTA_VALIDA,
+                sintomas={"fiebre": 38.2, "disnea": "no"},
+                texto_paciente="Gracias.",
+                pregunta="¿Dolor?",
+            ),
+        )
     )
-    assert "- Dolor: 6.0/10" in rendered
-    assert "- Disnea: no" in rendered
-    assert "- Fiebre: 38.2 °C" in rendered
+
+    rendered = format_accumulated_symptoms(session)
+
+    assert "- fiebre: 38.2" in rendered
+    assert "- disnea: no" in rendered
 
 
 def test_build_compact_memory_limits_llm_history_window() -> None:
@@ -78,13 +89,13 @@ def test_build_compact_memory_limits_llm_history_window() -> None:
     assert memory.omitted_turn_count == 3
 
 
-def test_build_compact_memory_keeps_full_facts_with_short_history() -> None:
+def test_build_compact_memory_keeps_full_symptoms_with_short_history() -> None:
     session = _session_with_turns(5)
     settings = Settings(conversation_history_max_turns=2, rag_context_max_turns=1)
 
     memory = build_compact_memory(session, settings)
 
-    assert "- Dolor: 5.0/10" in memory.accumulated_facts
+    assert "- dolor_abdominal: 5.0" in memory.accumulated_facts
 
 
 def test_build_compact_memory_rag_context_is_shorter_than_llm_history() -> None:

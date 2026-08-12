@@ -14,6 +14,7 @@ from agent.llm.prompts import SYSTEM_PROMPT, build_opening_user_prompt, build_us
 from core.config import Settings, get_settings
 from core.exceptions import LLMCancelledError, LLMError
 from core.groq_limiter import agent_groq_call_slot
+from core.llm_errors import groq_failure_to_llm_error
 from core.models import LLMTurnOutput, RetrievedChunk
 from core.retry import with_groq_retry
 from knowledge.protocol.models import SymptomDefinition
@@ -81,7 +82,7 @@ class GroqStreamingClient:
             turno=turno,
             max_turnos=max_turnos,
             historial=conversation_history,
-            hechos_acumulados=accumulated_facts,
+            sintomas_acumulados=accumulated_facts,
             patient_text=patient_message,
             evidence_block=GroqClient._format_evidence(retrieved_chunks),
             reference_date=ref.isoformat(),
@@ -204,4 +205,4 @@ class GroqStreamingClient:
         except LLMCancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
-            raise LLMError(f"Groq streaming failed: {exc}") from exc
+            raise groq_failure_to_llm_error(exc, prefix="Groq streaming failed") from exc

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.models import ProcedureScenario
+from core.procedure_labels import get_procedure_label
 
 SCENARIO_OPTIONS: tuple[tuple[str, str, ProcedureScenario], ...] = (
     ("1", "Apendicitis", ProcedureScenario.APPENDICITIS),
@@ -129,7 +130,7 @@ def qdrant_filter_values(procedure_id: str) -> list[str]:
 
 
 def list_procedure_folders(textos_dir: Path) -> list[str]:
-    """List procedure folder slugs under ``textos_dir``, excluding ``other``."""
+    """List procedure folder slugs under ``textos_dir`` that contain at least one PDF."""
     if not textos_dir.is_dir():
         return []
 
@@ -139,6 +140,8 @@ def list_procedure_folders(textos_dir: Path) -> list[str]:
         if not path.is_dir() or path.name.startswith("."):
             continue
         if path.name.lower() in {OTHER_OPTION_VALUE, "otro"}:
+            continue
+        if not any(path.glob("*.pdf")):
             continue
         canonical = canonical_procedure_id(path.name)
         if canonical in seen:
@@ -162,47 +165,39 @@ def scenario_label(scenario: ProcedureScenario) -> str:
     return scenario.value.replace("_", " ").replace("-", " ")
 
 
-def procedure_display_label(procedure_id: str) -> str:
+def procedure_display_label(procedure_id: str, *, textos_dir: Path | None = None) -> str:
     """Human-readable label for a procedure folder slug."""
-    scenario = FOLDER_TO_SCENARIO.get(procedure_id.lower())
+    canonical = canonical_procedure_id(procedure_id)
+    if textos_dir is not None:
+        custom = get_procedure_label(textos_dir, canonical)
+        if custom:
+            return custom
+    scenario = FOLDER_TO_SCENARIO.get(canonical)
     if scenario is not None:
         return scenario_label(scenario)
-    return procedure_id.replace("-", " ").replace("_", " ")
+    return canonical.replace("-", " ").replace("_", " ")
 
 
-def folder_display_label(folder_name: str) -> str:
+def folder_display_label(folder_name: str, *, textos_dir: Path | None = None) -> str:
     """Human-readable label for a `dataset/textos` folder."""
-    return procedure_display_label(normalize_procedure_id(folder_name))
+    return procedure_display_label(normalize_procedure_id(folder_name), textos_dir=textos_dir)
 
 
 def list_procedure_options_from_disk(textos_dir: Path) -> list[tuple[str, str]]:
-    """List dropdown options from folders in ``textos_dir``, always including other.
-
-    Returns ``(value, label)`` pairs. ``value`` is the folder name on disk
-    (or ``other``). New folders appear automatically the next time this is called.
-    """
-    options: list[tuple[str, str]] = []
-    has_otro = False
-
-    if textos_dir.is_dir():
-        for path in sorted(textos_dir.iterdir(), key=lambda p: p.name.lower()):
-            if not path.is_dir() or path.name.startswith("."):
-                continue
-            if path.name.lower() in {OTHER_OPTION_VALUE, "otro"}:
-                has_otro = True
-                options.append((OTHER_OPTION_VALUE, OTHER_OPTION_LABEL))
-                continue
-            options.append((path.name, folder_display_label(path.name)))
-
-    if not has_otro:
-        options.append((OTHER_OPTION_VALUE, OTHER_OPTION_LABEL))
+    """List dropdown options from folders in ``textos_dir``, always including other."""
+    options = [
+        (folder, procedure_display_label(folder, textos_dir=textos_dir))
+        for folder in list_procedure_folders(textos_dir)
+    ]
+    options.append((OTHER_OPTION_VALUE, OTHER_OPTION_LABEL))
     return options
 
 
 def list_admin_procedure_options(textos_dir: Path) -> list[tuple[str, str]]:
     """Admin dropdown: known folders plus Otro."""
     options = [
-        (folder, procedure_display_label(folder)) for folder in list_procedure_folders(textos_dir)
+        (folder, procedure_display_label(folder, textos_dir=textos_dir))
+        for folder in list_procedure_folders(textos_dir)
     ]
     options.append((OTHER_OPTION_VALUE, OTHER_OPTION_LABEL))
     return options

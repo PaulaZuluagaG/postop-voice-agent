@@ -6,21 +6,30 @@ from core.models import ResponseCategory, SeverityLevel, YesNo, coerce_optional_
 from knowledge.protocol.models import (
     PostOpProtocol,
     ProtocolThresholds,
+    RiskFactorDefinition,
     SymptomDefinition,
     SymptomLevel,
 )
 
 
 def get_day_factor(dia_postop: int) -> float:
+    """Scale symptom scores by recovery stage (Excel timepoints: 1, 3, 7, 14)."""
     if dia_postop == 1:
         return 0.5
+    if dia_postop == 3:
+        return 1.0
+    if dia_postop == 7:
+        return 1.25
+    if dia_postop >= 14:
+        return 1.5
+    # Legacy / CLI dates between canonical timepoints
     if dia_postop == 2:
         return 0.75
-    if 3 <= dia_postop <= 4:
+    if 4 <= dia_postop <= 6:
         return 1.0
-    if 5 <= dia_postop <= 7:
-        return 1.25
-    return 1.5
+    if 8 <= dia_postop <= 13:
+        return 1.375
+    return 1.0
 
 
 def _normalize_symptom_value(value: object) -> float | None:
@@ -150,22 +159,24 @@ def detect_critical_alert(
     return False
 
 
-# Legacy helpers kept for transitional tests — delegate to protocol when provided.
-def score_turn(symptoms: object) -> tuple[int, list[str]]:
-    from core.models import PatientFacts
-
-    if not isinstance(symptoms, PatientFacts):
+def apply_risk_factor_bonus(
+    patient_comorbidities: list[str],
+    protocol_risk_factors: list[RiskFactorDefinition],
+    *,
+    bonus_per_match: int,
+) -> tuple[int, list[str]]:
+    """Add a fixed bonus per matching comorbidity (patient ∩ protocol risk factors)."""
+    if not patient_comorbidities or not protocol_risk_factors:
         return 0, []
-    values = {
-        "dolor": symptoms.pain,
-        "fiebre": symptoms.fever_celsius,
-        "disnea": symptoms.dyspnea,
-        "sangrado": symptoms.bleeding,
-        "confusion": symptoms.confusion,
-        "vomitos_episodios": symptoms.vomiting_count,
-    }
-    from knowledge.protocol.loader import load_general_protocol
 
-    protocol = load_general_protocol()
-    base, _factor, weighted, rules = score_turn_from_protocol(values, protocol, postop_day=3)
-    return weighted, rules
+    protocol_ids = {factor.id for factor in protocol_risk_factors}
+    labels_by_id = {factor.id: factor.label for factor in protocol_risk_factors}
+    matches = [comorbidity for comorbidity in patient_comorbidities if comorbidity in protocol_ids]
+    if not matches:
+        return 0, []
+
+    bonus = len(matches) * bonus_per_match
+    rules = [
+        f"Factor de riesgo {labels_by_id[match]} ({match}): +{bonus_per_match}" for match in matches
+    ]
+    return bonus, rules

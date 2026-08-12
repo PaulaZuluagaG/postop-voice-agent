@@ -67,3 +67,18 @@ def load_protocol_for_scenario(
         settings=settings,
         uses_general_protocol=uses_general_protocol or scenario == ProcedureScenario.OTHER,
     )
+
+
+def list_risk_factors_for_procedure(
+    procedure_id: str,
+    *,
+    settings: Settings | None = None,
+    uses_general_protocol: bool = False,
+) -> list[dict[str, str]]:
+    """Return risk factor options for UI comorbidity selection."""
+    protocol, _ = load_protocol_for_procedure(
+        procedure_id,
+        settings=settings,
+        uses_general_protocol=uses_general_protocol,
+    )
+    return [{"id": factor.id, "label": factor.label} for factor in protocol.risk_factors]

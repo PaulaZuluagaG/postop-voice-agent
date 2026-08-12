@@ -3,15 +3,12 @@ from uuid import uuid4
 
 from agent.orchestrator import ConversationOrchestrator
 from core.models import (
-    ClinicalAxis,
-    ClinicalFacts,
     DocumentType,
     LLMTurnOutput,
     ProcedureScenario,
     ResponseCategory,
     RetrievedChunk,
     SeverityLevel,
-    YesNo,
 )
 from knowledge.retrieval.retriever import ContextualRetriever
 
@@ -55,9 +52,9 @@ class FakeLLM:
     def generate_turn(self, **kwargs):
         return LLMTurnOutput(
             categoria=ResponseCategory.RESPUESTA_VALIDA,
-            foco=ClinicalAxis.DOLOR,
+            foco_sintoma="dolor_abdominal",
             evidencia_suficiente=True,
-            hechos=ClinicalFacts(dolor_0_10=6.0),
+            sintomas={"dolor_abdominal": 6.0},
             texto_paciente="Entiendo su molestia.",
             pregunta="¿El dolor empeora al respirar?",
             fuentes=["src_test"],
@@ -68,9 +65,9 @@ class AlertLLM(FakeLLM):
     def generate_turn(self, **kwargs):
         return LLMTurnOutput(
             categoria=ResponseCategory.ALERTA_IMPLICITA,
-            foco=ClinicalAxis.HERIDA,
+            foco_sintoma="infeccion_herida",
             evidencia_suficiente=True,
-            hechos=ClinicalFacts(sangreado=YesNo.SI),
+            sintomas={"infeccion_herida": "si"},
             texto_paciente="Lo siento, esto no debería decir el LLM.",
             pregunta=None,
         )
@@ -128,9 +125,7 @@ def test_orchestrator_accumulates_score_across_turns() -> None:
             pain = 6.0 if self._calls == 1 else 7.0
             return LLMTurnOutput(
                 categoria=ResponseCategory.RESPUESTA_VALIDA,
-                foco=ClinicalAxis.DOLOR,
                 foco_sintoma="dolor_abdominal",
-                hechos=ClinicalFacts(dolor_0_10=pain),
                 sintomas={"dolor_abdominal": pain},
                 texto_paciente="Gracias por la información.",
                 pregunta="¿Ha tenido fiebre?",
@@ -220,6 +215,46 @@ def test_orchestrator_appends_farewell_when_max_turns_reached_without_closure() 
 
     assert session.call_closed is True
     assert MAX_TURNS_CLOSE_MESSAGE in session.turns[-1].agent_response
+    assert "¿Ha tenido fiebre?" not in session.turns[-1].agent_response
+
+
+def test_orchestrator_closes_without_question_when_protocol_complete() -> None:
+    from agent.decision.session_protocol import protocol_from_session
+    from agent.messages import MAX_TURNS_CLOSE_MESSAGE
+    from core.config import Settings
+
+    class LastQuestionLLM:
+        def generate_turn(self, **kwargs):
+            return LLMTurnOutput(
+                categoria=ResponseCategory.RESPUESTA_VALIDA,
+                texto_paciente="De acuerdo, gracias por compartir esta información.",
+                pregunta="¿Ha tenido dificultad para respirar?",
+                sintomas={"dificultad_respiratoria": "no"},
+                foco_sintoma="dificultad_respiratoria",
+            )
+
+    settings = Settings(max_turns_per_call=10)
+    orchestrator = ConversationOrchestrator(
+        settings=settings,
+        retriever=FakeRetriever(),
+        llm=LastQuestionLLM(),
+    )
+    session = orchestrator.start_call(
+        procedure_scenario=ProcedureScenario.APPENDICITIS,
+        call_id=uuid4(),
+    )
+    session.covered_symptoms = {
+        symptom.id
+        for symptom in protocol_from_session(session).symptoms
+        if symptom.id != "dificultad_respiratoria"
+    }
+
+    orchestrator.process_turn(session.call_id, "No he tenido dificultad para respirar.")
+
+    assert session.call_closed is True
+    final = session.turns[-1].agent_response
+    assert MAX_TURNS_CLOSE_MESSAGE in final
+    assert "¿Ha tenido dificultad para respirar?" not in final
 
 
 def test_build_user_prompt_includes_final_turn_closure_instructions() -> None:
@@ -236,7 +271,7 @@ def test_build_user_prompt_includes_final_turn_closure_instructions() -> None:
         turno=8,
         max_turnos=8,
         historial="",
-        hechos_acumulados="(ninguno)",
+        sintomas_acumulados="(ninguno)",
         patient_text="Estoy bien",
         evidence_block="",
         reference_date="2026-08-10",
@@ -275,11 +310,11 @@ def test_begin_triage_without_procedure_evidence() -> None:
         call_id=uuid4(),
     )
     opening = orchestrator.begin_triage(session.call_id)
-    assert "María" in opening
-    assert "No tengo información específica sobre Apendicitis" in opening
+    assert "soy María" in opening
+    assert "documentos específicos" in opening.lower() or "guías clínicas" in opening.lower()
     assert "triaje general" in opening.lower()
     assert opening.count("?") == 1
-    assert "dolor" in opening.lower()
+    assert "fiebre" in opening.lower()
 
 
 def test_begin_triage_with_procedure_evidence() -> None:
@@ -295,8 +330,9 @@ def test_begin_triage_with_procedure_evidence() -> None:
         call_id=uuid4(),
     )
     opening = orchestrator.begin_triage(session.call_id)
-    assert "Sí cuento con guías clínicas sobre Apendicitis" in opening
-    assert "apendicectomía" in opening.lower()
+    assert "soy María" in opening
+    assert "Tengo guías clínicas" not in opening
+    assert "fiebre" in opening.lower()
     assert opening.count("?") == 1
 
 
@@ -316,3 +352,33 @@ def test_orchestrator_procedure_mismatch_notice() -> None:
     assert "no tengo documentación" in turn.agent_response.lower()
     assert "Reemplazo articular" in turn.agent_response
     assert "Apendicitis" in turn.agent_response
+
+
+def test_orchestrator_keeps_focal_symptom_on_ambiguous_response() -> None:
+    class AmbiguousLLM:
+        def generate_turn(self, **kwargs):
+            return LLMTurnOutput(
+                categoria=ResponseCategory.NO_ENTIENDE,
+                foco_sintoma="fiebre",
+                evidencia_suficiente=False,
+                sintomas={"fiebre": 37.0},
+                texto_paciente="Permítame preguntarle de otra forma.",
+                pregunta="¿Ha tenido fiebre? Responda sí o no.",
+                fuentes=[],
+            )
+
+    orchestrator = ConversationOrchestrator(
+        retriever=FakeRetriever(),
+        llm=AmbiguousLLM(),
+    )
+    session = orchestrator.start_call(
+        procedure_scenario=ProcedureScenario.APPENDICITIS,
+        call_id=uuid4(),
+    )
+    assert session.current_focal_symptom == "fiebre"
+
+    turn = orchestrator.process_turn(session.call_id, "más o menos normal")
+
+    assert "fiebre" not in session.covered_symptoms
+    assert session.current_focal_symptom == "fiebre"
+    assert turn.llm_output.categoria == ResponseCategory.NO_ENTIENDE

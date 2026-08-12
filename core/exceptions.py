@@ -37,6 +37,10 @@ class LLMError(PostOpError):
     """LLM invocation or parsing failed."""
 
 
+class LLMRateLimitError(LLMError):
+    """Groq rate limit prevented LLM completion."""
+
+
 class LLMCancelledError(LLMError):
     """LLM generation was interrupted before producing output."""
 

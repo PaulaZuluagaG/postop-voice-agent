@@ -53,8 +53,32 @@
         <p id="token-saved-msg" class="mt-2 hidden text-sm font-medium text-teal-700">
           Token activo para esta sesión.
         </p>
+        <p id="token-error-msg" class="mt-2 hidden text-sm font-medium text-rose-700">
+          Token inválido. Verifica el valor e inténtalo de nuevo.
+        </p>
       </section>
 
+      <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <nav class="flex gap-2 border-b border-slate-200 px-6 pt-4" aria-label="Secciones">
+        <button
+          id="tab-documents"
+          type="button"
+          data-tab="documents"
+          class="tab-btn rounded-t-lg border border-b-0 border-slate-200 bg-white px-4 py-2 text-sm font-medium text-teal-700"
+        >
+          Documentos
+        </button>
+        <button
+          id="tab-calls"
+          type="button"
+          data-tab="calls"
+          class="tab-btn rounded-t-lg border border-transparent px-4 py-2 text-sm font-medium text-slate-500 transition hover:text-slate-700"
+        >
+          Llamadas recientes
+        </button>
+      </nav>
+
+      <div id="panel-documents" class="tab-panel space-y-6 px-6 pb-8 pt-6">
       <section class="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div class="flex items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
           <div>
@@ -75,9 +99,10 @@
           <table class="w-full border-collapse text-left text-sm">
             <thead>
               <tr class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <th scope="col" class="px-6 py-3 font-semibold">Acciones</th>
                 <th scope="col" class="px-6 py-3 font-semibold">source_id</th>
+                <th scope="col" class="px-6 py-3 font-semibold">Nombre</th>
                 <th scope="col" class="px-6 py-3 font-semibold">procedure_type</th>
-                <th scope="col" class="px-6 py-3 text-right font-semibold">Acciones</th>
               </tr>
             </thead>
             <tbody id="docs-body"></tbody>
@@ -132,6 +157,65 @@
           </span>
         </div>
       </section>
+      </div>
+
+      <div id="panel-calls" class="tab-panel hidden space-y-6 px-6 pb-8 pt-6">
+        <section>
+          <div class="flex items-center justify-between gap-3 border-b border-slate-200 pb-4">
+            <div>
+              <h2 class="text-base font-semibold text-slate-900">Llamadas recientes</h2>
+              <p id="call-count" class="mt-0.5 text-sm text-slate-500">0 llamada(s) registrada(s)</p>
+            </div>
+            <button
+              id="refresh-calls-btn"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span id="refresh-calls-icon" aria-hidden="true">↻</span>
+              <span id="refresh-calls-label">Actualizar</span>
+            </button>
+          </div>
+
+          <div class="mt-4 overflow-x-auto">
+            <table class="w-full border-collapse text-left text-sm">
+              <thead>
+                <tr class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <th scope="col" class="px-2 py-3 font-semibold">Paciente</th>
+                  <th scope="col" class="px-2 py-3 font-semibold">Procedimiento</th>
+                  <th scope="col" class="px-2 py-3 font-semibold">Día</th>
+                  <th scope="col" class="px-2 py-3 font-semibold">Decisión</th>
+                  <th scope="col" class="px-2 py-3 font-semibold">Cierre</th>
+                  <th scope="col" class="px-2 py-3 text-right font-semibold">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="calls-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+      </div>
+    </div>
+
+    <div
+      id="call-detail-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="call-detail-title"
+      class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/40 p-4"
+    >
+      <div class="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
+        <h3 id="call-detail-title" class="text-base font-semibold text-slate-900">Resumen clínico</h3>
+        <div id="call-detail-content" class="mt-4 space-y-3 text-sm text-slate-700"></div>
+        <div class="mt-6 flex justify-end">
+          <button
+            id="call-detail-close"
+            type="button"
+            class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
     </div>
 
     <div
@@ -142,20 +226,42 @@
       class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/40 p-4"
     >
       <div class="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
-        <h3 id="procedure-title" class="text-base font-semibold text-slate-900">Confirmar procedure</h3>
+        <h3 id="procedure-title" class="text-base font-semibold text-slate-900">Confirmar procedimiento</h3>
         <p class="mt-2 text-sm text-slate-600">
-          Sugerencia del LLM:
+          Nombre en español sugerido:
+          <span id="suggested-procedure-label" class="font-medium text-slate-900"></span>
+        </p>
+        <p class="mt-1 text-sm text-slate-600">
+          Carpeta en inglés (slug):
           <span id="suggested-procedure" class="font-mono font-medium text-slate-900"></span>
         </p>
         <div class="mt-4">
+          <label for="manual-procedure-label" class="mb-1.5 block text-sm font-medium text-slate-700">
+            Nombre en español (procedure_type)
+          </label>
+          <input
+            id="manual-procedure-label"
+            type="text"
+            class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/30"
+          />
+        </div>
+        <div class="mt-4">
           <label for="manual-procedure" class="mb-1.5 block text-sm font-medium text-slate-700">
-            Procedure definitivo
+            Carpeta en inglés (slug)
           </label>
           <input
             id="manual-procedure"
             type="text"
             class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/30"
           />
+        </div>
+        <div
+          id="procedure-processing"
+          class="mt-4 hidden rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800"
+          role="status"
+          aria-live="polite"
+        >
+          Procesando documento e indexando en la base de conocimiento…
         </div>
         <div class="mt-6 flex justify-end gap-3">
           <button
@@ -211,6 +317,6 @@
       aria-live="polite"
     ></div>
 
-    <script src="/app.js"></script>
+    <script src="/app.js?v=6"></script>
   </body>
 </html>
