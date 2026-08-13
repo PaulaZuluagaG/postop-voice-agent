@@ -93,6 +93,9 @@ class Settings(BaseSettings):
     voice_opening_grace_max_seconds: float = 4.0
     voice_connected_delay_seconds: float = 0.25
 
+    # Ingest / admin hot-reload
+    ingest_warmup_on_start: bool = True
+
     # Agent
     max_turns_per_call: int = 8
     risk_factor_score_bonus: int = 2

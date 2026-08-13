@@ -7,6 +7,7 @@ import time
 from threading import Lock
 
 from core.config import Settings, get_settings
+from knowledge.ingest.shared_embedder import get_shared_embedding_service
 from knowledge.retrieval.retriever import ContextualRetriever
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,8 @@ def get_shared_retriever(settings: Settings | None = None) -> ContextualRetrieve
     with _retriever_lock:
         if _retriever is None:
             resolved = settings or get_settings()
-            _retriever = ContextualRetriever(resolved)
+            embedder = get_shared_embedding_service(resolved)
+            _retriever = ContextualRetriever(resolved, embedder=embedder)
             logger.info("Shared ContextualRetriever initialized")
     return _retriever
 

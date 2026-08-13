@@ -49,6 +49,9 @@ services:
       CALLS_LOG_DIR: /app/storage/logs/calls
       API_HOST: 0.0.0.0
       API_PORT: 8000
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      TOKENIZERS_PARALLELISM: "false"
     command: ["postop-admin"]
     ports:
       - "${API_PORT:-8000}:8000"
