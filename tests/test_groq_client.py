@@ -21,11 +21,12 @@ def test_generate_structured_parses_json_response() -> None:
     )
     mock_response = MagicMock()
     mock_response.choices = [mock_choice]
+    mock_response.usage = MagicMock(prompt_tokens=120, completion_tokens=45, total_tokens=165)
 
     with patch.object(
         client._client.chat.completions, "create", return_value=mock_response
     ) as create:
-        output = client._generate_structured("user prompt", retrieved_chunks=[])
+        output, usage = client._generate_structured("user prompt", retrieved_chunks=[])
 
     create.assert_called_once()
     call_kwargs = create.call_args.kwargs
@@ -34,3 +35,4 @@ def test_generate_structured_parses_json_response() -> None:
     assert call_kwargs["temperature"] == 0.1
     assert output.categoria == ResponseCategory.RESPUESTA_VALIDA
     assert isinstance(output, LLMTurnOutput)
+    assert usage.total_tokens == 165

@@ -16,7 +16,7 @@ from core.config import Settings, get_settings
 from core.exceptions import LLMError
 from core.groq_limiter import agent_groq_call_slot
 from core.llm_errors import groq_failure_to_llm_error
-from core.models import LLMTurnOutput, RetrievedChunk
+from core.models import LLMTurnOutput, LLMUsage, RetrievedChunk
 from core.retry import with_groq_retry
 from knowledge.protocol.models import SymptomDefinition
 
@@ -71,7 +71,7 @@ class GroqClient:
             current_focal_symptom=current_focal_symptom,
         )
 
-        def _call() -> LLMTurnOutput:
+        def _call() -> tuple[LLMTurnOutput, LLMUsage]:
             return self._generate_structured(user_prompt, retrieved_chunks)
 
         try:
@@ -106,7 +106,7 @@ class GroqClient:
             reference_date=ref.isoformat(),
         )
 
-        def _call() -> LLMTurnOutput:
+        def _call() -> tuple[LLMTurnOutput, LLMUsage]:
             return self._generate_structured(user_prompt, retrieved_chunks)
 
         try:
@@ -118,7 +118,7 @@ class GroqClient:
         self,
         user_prompt: str,
         retrieved_chunks: list[RetrievedChunk],
-    ) -> LLMTurnOutput:
+    ) -> tuple[LLMTurnOutput, LLMUsage]:
         with agent_groq_call_slot():
             response = self._client.chat.completions.create(
                 model=self._settings.groq_model,
@@ -136,7 +136,23 @@ class GroqClient:
         payload = normalize_llm_turn_payload(payload)
         output = LLMTurnOutput.model_validate(payload)
         output = self._sanitize_sources(output, retrieved_chunks)
-        return output
+        usage = self._parse_usage(response.usage)
+        return output, usage
+
+    @staticmethod
+    def _parse_usage(usage: object | None) -> LLMUsage:
+        if usage is None:
+            return LLMUsage()
+        prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
+        completion = int(getattr(usage, "completion_tokens", 0) or 0)
+        total = int(getattr(usage, "total_tokens", 0) or 0)
+        if total == 0:
+            total = prompt + completion
+        return LLMUsage(
+            prompt_tokens=prompt,
+            completion_tokens=completion,
+            total_tokens=total,
+        )
 
     @staticmethod
     def _parse_json(raw: str) -> dict[str, Any]:

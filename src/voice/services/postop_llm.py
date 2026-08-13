@@ -25,9 +25,11 @@ from pipecat.services.llm_service import LLMService
 from pipecat.services.settings import LLMSettings
 
 from agent.messages import LLM_RATE_LIMIT_CLOSE_MESSAGE
+from agent.metrics.voice_latency import voice_latency_tracker
 from agent.orchestrator import ConversationOrchestrator
 from core.config import Settings, get_settings
 from core.exceptions import LLMCancelledError, LLMError, LLMRateLimitError, SessionError
+from voice.context import current_call_id
 from voice.frames import PostOpUserTurnFrame
 
 
@@ -79,6 +81,14 @@ class PostOpLLMService(LLMService):
         self._opening_in_progress = False
         self._call_ended = asyncio.Event()
         self._pipeline_stop: Callable[[], Awaitable[None]] | None = None
+        voice_latency_tracker.register_handler(
+            call_id,
+            lambda voice_ms, tts_ms: orchestrator.apply_voice_timings(
+                call_id,
+                voice_response_ms=voice_ms,
+                tts_ttfb_ms=tts_ms,
+            ),
+        )
 
     def bind_pipeline_stop(self, stop_fn: Callable[[], Awaitable[None]]) -> None:
         """Register a full-pipeline shutdown (e.g. WebRTC ``stop_when_done``)."""
@@ -251,6 +261,9 @@ class PostOpLLMService(LLMService):
             # InterruptionFrame may have set this while the agent was speaking; clear
             # before starting a fresh Groq stream for the patient's completed turn.
             self._cancel_event = asyncio.Event()
+
+            current_call_id.set(self._call_id)
+            voice_latency_tracker.begin_turn(self._call_id)
 
             stream = self._orchestrator.stream_turn_response(
                 self._call_id,

@@ -61,6 +61,7 @@ from agent.messages import (
     build_procedure_mismatch_message,
     closure_message_for_severity,
 )
+from agent.metrics.aggregation import aggregate_call_usage
 from agent.traceability.logger import CallTraceLogger
 from core.config import Settings, get_settings
 from core.exceptions import LLMCancelledError, SessionError
@@ -271,7 +272,7 @@ class ConversationOrchestrator:
         )
 
         llm_start = time.perf_counter()
-        llm_output = self._llm.generate_turn(
+        llm_output, llm_usage = self._llm.generate_turn(
             patient_message=patient_message,
             patient_name=session.patient_name,
             procedimiento=procedimiento,
@@ -341,11 +342,36 @@ class ConversationOrchestrator:
                 decision_ms=0.0,
                 total_ms=total_ms,
             ),
+            llm_usage=llm_usage,
+            llm_invocations=1,
+            rag_queries=1,
         )
         session.turns.append(turn)
         turn = self._apply_close_reason(session, turn, llm_output, alert=decision.alert)
         self._trace.log_turn(session.call_id, turn)
         return turn
+
+    def apply_voice_timings(
+        self,
+        call_id: UUID,
+        *,
+        voice_response_ms: float,
+        tts_ttfb_ms: float | None = None,
+    ) -> None:
+        """Patch the latest turn with end-to-end voice latency after TTS starts."""
+        session = self.get_session(call_id)
+        if not session.turns:
+            return
+        turn = session.turns[-1]
+        timings = turn.timings.model_copy(
+            update={
+                "voice_response_ms": voice_response_ms,
+                "tts_ttfb_ms": tts_ttfb_ms or turn.timings.tts_ttfb_ms,
+            }
+        )
+        updated = turn.model_copy(update={"timings": timings})
+        session.turns[-1] = updated
+        self._trace.log_turn(call_id, updated)
 
     async def stream_turn_response(
         self,
@@ -401,10 +427,13 @@ class ConversationOrchestrator:
         )
 
         streamed_parts: list[str] = []
+        first_token_ms = 0.0
         async for token in stream.tokens:
             if cancel_event and cancel_event.is_set():
                 await drain_output_future(stream.output_future)
                 return
+            if token and first_token_ms == 0.0:
+                first_token_ms = (time.perf_counter() - turn_start) * 1000
             streamed_parts.append(token)
             yield token
 
@@ -413,7 +442,7 @@ class ConversationOrchestrator:
             return
 
         try:
-            llm_output = await stream.output_future
+            llm_output, llm_usage = await stream.output_future
         except LLMCancelledError:
             return
         llm_ms = (time.perf_counter() - llm_start) * 1000
@@ -493,8 +522,12 @@ class ConversationOrchestrator:
                 retrieval_ms=retrieval_ms,
                 llm_ms=llm_ms,
                 decision_ms=0.0,
+                first_token_ms=first_token_ms,
                 total_ms=total_ms,
             ),
+            llm_usage=llm_usage,
+            llm_invocations=1,
+            rag_queries=1,
         )
         session.turns.append(turn)
         if close_reason is not None:
@@ -816,6 +849,7 @@ class ConversationOrchestrator:
             turn_count=session.turn_count,
             closed_reason=reason,
             turn_history=session.turns,
+            usage=aggregate_call_usage(session.turns),
         )
         source_labels = resolve_source_labels(summary.sources_used, settings=self._settings)
         return summary.model_copy(

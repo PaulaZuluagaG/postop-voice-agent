@@ -22,7 +22,7 @@ from core.models import (
     TurnRecord,
 )
 from knowledge.protocol.loader import load_protocol_for_procedure
-from tests.test_orchestrator import FakeLLM, FakeRetriever
+from tests.test_orchestrator import FakeLLM, FakeRetriever, _llm_turn
 
 
 def test_closure_message_for_severity() -> None:
@@ -39,23 +39,27 @@ def test_orchestrator_yellow_closure_uses_vigilance_message() -> None:
         def generate_turn(self, **kwargs):
             self._turn += 1
             if self._turn == 1:
-                return LLMTurnOutput(
+                return _llm_turn(
+                    LLMTurnOutput(
+                        categoria=ResponseCategory.RESPUESTA_VALIDA,
+                        foco_sintoma="fiebre",
+                        evidencia_suficiente=True,
+                        sintomas={"fiebre": 37.8},
+                        texto_paciente="De acuerdo.",
+                        pregunta="¿Cómo clasifica su dolor abdominal del 0 al 10?",
+                        fuentes=["src_test"],
+                    )
+                )
+            return _llm_turn(
+                LLMTurnOutput(
                     categoria=ResponseCategory.RESPUESTA_VALIDA,
-                    foco_sintoma="fiebre",
+                    foco_sintoma="dolor_abdominal",
                     evidencia_suficiente=True,
-                    sintomas={"fiebre": 37.8},
-                    texto_paciente="De acuerdo.",
-                    pregunta="¿Cómo clasifica su dolor abdominal del 0 al 10?",
+                    sintomas={"dolor_abdominal": 5.0},
+                    texto_paciente="Gracias.",
+                    pregunta="¿Ha tenido náuseas?",
                     fuentes=["src_test"],
                 )
-            return LLMTurnOutput(
-                categoria=ResponseCategory.RESPUESTA_VALIDA,
-                foco_sintoma="dolor_abdominal",
-                evidencia_suficiente=True,
-                sintomas={"dolor_abdominal": 5.0},
-                texto_paciente="Gracias.",
-                pregunta="¿Ha tenido náuseas?",
-                fuentes=["src_test"],
             )
 
     settings = Settings(max_turns_per_call=2)
@@ -88,14 +92,16 @@ def test_orchestrator_yellow_closure_uses_vigilance_message() -> None:
 def test_orchestrator_red_closure_keeps_alert_message() -> None:
     class RedScoreLLM(FakeLLM):
         def generate_turn(self, **kwargs):
-            return LLMTurnOutput(
-                categoria=ResponseCategory.RESPUESTA_VALIDA,
-                foco_sintoma="fiebre",
-                evidencia_suficiente=True,
-                sintomas={"fiebre": 39.0},
-                texto_paciente="Entiendo.",
-                pregunta=None,
-                fuentes=["src_test"],
+            return _llm_turn(
+                LLMTurnOutput(
+                    categoria=ResponseCategory.RESPUESTA_VALIDA,
+                    foco_sintoma="fiebre",
+                    evidencia_suficiente=True,
+                    sintomas={"fiebre": 39.0},
+                    texto_paciente="Entiendo.",
+                    pregunta=None,
+                    fuentes=["src_test"],
+                )
             )
 
     orchestrator = ConversationOrchestrator(
@@ -151,14 +157,16 @@ def test_orchestrator_alert_persists_call_close_event(tmp_path) -> None:
 
     class RedScoreLLM(FakeLLM):
         def generate_turn(self, **kwargs):
-            return LLMTurnOutput(
-                categoria=ResponseCategory.RESPUESTA_VALIDA,
-                foco_sintoma="fiebre",
-                evidencia_suficiente=True,
-                sintomas={"fiebre": 39.0},
-                texto_paciente="Entiendo.",
-                pregunta=None,
-                fuentes=["src_test"],
+            return _llm_turn(
+                LLMTurnOutput(
+                    categoria=ResponseCategory.RESPUESTA_VALIDA,
+                    foco_sintoma="fiebre",
+                    evidencia_suficiente=True,
+                    sintomas={"fiebre": 39.0},
+                    texto_paciente="Entiendo.",
+                    pregunta=None,
+                    fuentes=["src_test"],
+                )
             )
 
     settings = Settings(calls_log_dir=tmp_path / "calls")

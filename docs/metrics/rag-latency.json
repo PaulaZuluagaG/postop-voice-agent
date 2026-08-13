@@ -1,0 +1,9 @@
+{
+  "mode": "retrieval_only",
+  "samples": 5,
+  "p50_ms": 36.6,
+  "p95_ms": 4148.7,
+  "mean_ms": 1062.7,
+  "values_ms": [5175.8, 40.0, 34.7, 26.3, 36.6],
+  "note": "Primera consulta incluye carga del embedder Granite (~5 s); turnos siguientes ~30–40 ms."
+}

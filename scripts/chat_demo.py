@@ -52,7 +52,8 @@ def _print_turn_metadata(session: CallSessionState, turn: TurnRecord) -> None:
         f"escenario: {session.procedure_scenario.value} | "
         f"día postop: {session.postop_day} | puntaje turno: {turn.turn_score} | "
         f"acumulado: {turn.cumulative_score} | severidad: {turn.severity.value} | "
-        f"alerta: {turn.alert_triggered} | {turn.timings.total_ms:.0f}ms]\n"
+        f"alerta: {turn.alert_triggered} | {turn.timings.total_ms:.0f}ms | "
+        f"tokens: {turn.llm_usage.total_tokens if turn.llm_usage else 0}]\n"
     )
 
 

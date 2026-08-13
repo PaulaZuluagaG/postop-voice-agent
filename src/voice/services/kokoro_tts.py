@@ -15,7 +15,9 @@ from pipecat.services.settings import TTSSettings
 from pipecat.services.tts_service import TextAggregationMode, TTSService
 from pipecat.utils.tracing.service_decorators import traced_tts
 
+from agent.metrics.voice_latency import voice_latency_tracker
 from core.config import Settings, get_settings
+from voice.context import current_call_id
 
 SENTENCE_SPLIT_PATTERN = r"(?<=[.!?…])\s+"
 
@@ -121,6 +123,9 @@ class KokoroTTSService(TTSService):
         Thread(target=producer, daemon=True).start()
 
         await self.start_tts_usage_metrics(cleaned)
+        call_id = current_call_id.get()
+        if call_id is not None:
+            voice_latency_tracker.begin_tts(call_id)
         while True:
             item = await chunk_queue.get()
             if item is None:
@@ -139,6 +144,8 @@ class KokoroTTSService(TTSService):
                     cleaned[:72],
                 )
                 first_audio_logged = True
+                if call_id is not None:
+                    voice_latency_tracker.mark_first_audio(call_id)
 
             await self.stop_ttfb_metrics()
             yield TTSAudioRawFrame(item, self.sample_rate, 1, context_id=context_id)

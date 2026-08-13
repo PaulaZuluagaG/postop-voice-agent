@@ -15,7 +15,7 @@ from core.config import Settings, get_settings
 from core.exceptions import LLMCancelledError, LLMError
 from core.groq_limiter import agent_groq_call_slot
 from core.llm_errors import groq_failure_to_llm_error
-from core.models import LLMTurnOutput, RetrievedChunk
+from core.models import LLMTurnOutput, LLMUsage, RetrievedChunk
 from core.retry import with_groq_retry
 from knowledge.protocol.models import SymptomDefinition
 
@@ -25,7 +25,7 @@ class GroqStreamHandle:
     """Maneja tokens hablables y la salida estructurada final."""
 
     tokens: AsyncIterator[str]
-    output_future: asyncio.Future[LLMTurnOutput]
+    output_future: asyncio.Future[tuple[LLMTurnOutput, LLMUsage]]
 
 
 async def drain_output_future(future: asyncio.Future[LLMTurnOutput]) -> None:
@@ -127,17 +127,17 @@ class GroqStreamingClient:
     ) -> GroqStreamHandle:
         loop = asyncio.get_running_loop()
         token_queue: asyncio.Queue[str | None] = asyncio.Queue()
-        output_future: asyncio.Future[LLMTurnOutput] = loop.create_future()
+        output_future: asyncio.Future[tuple[LLMTurnOutput, LLMUsage]] = loop.create_future()
 
         def worker() -> None:
             try:
-                output = self._collect_stream_sync(
+                output, usage = self._collect_stream_sync(
                     user_prompt,
                     retrieved_chunks,
                     lambda token: loop.call_soon_threadsafe(token_queue.put_nowait, token),
                     cancel_event,
                 )
-                loop.call_soon_threadsafe(output_future.set_result, output)
+                loop.call_soon_threadsafe(output_future.set_result, (output, usage))
             except Exception as exc:  # noqa: BLE001
                 loop.call_soon_threadsafe(output_future.set_exception, exc)
             finally:
@@ -160,11 +160,12 @@ class GroqStreamingClient:
         retrieved_chunks: list[RetrievedChunk],
         on_token: Callable[[str], None],
         cancel_event: asyncio.Event | None,
-    ) -> LLMTurnOutput:
-        def _call() -> LLMTurnOutput:
+    ) -> tuple[LLMTurnOutput, LLMUsage]:
+        def _call() -> tuple[LLMTurnOutput, LLMUsage]:
             with agent_groq_call_slot():
                 extractor = JsonStringFieldExtractor("texto_paciente")
                 chunks: list[str] = []
+                usage = LLMUsage()
 
                 stream = self._groq._client.chat.completions.create(  # noqa: SLF001
                     model=self._settings.groq_model,
@@ -176,11 +177,14 @@ class GroqStreamingClient:
                     max_tokens=self._settings.groq_max_output_tokens,
                     response_format={"type": "json_object"},
                     stream=True,
+                    stream_options={"include_usage": True},
                 )
 
                 for chunk in stream:
                     if cancel_event and cancel_event.is_set():
                         break
+                    if getattr(chunk, "usage", None) is not None:
+                        usage = self._groq._parse_usage(chunk.usage)  # noqa: SLF001
                     if not chunk.choices:
                         continue
                     delta = chunk.choices[0].delta.content
@@ -198,7 +202,7 @@ class GroqStreamingClient:
                 raise LLMError("Groq streaming devolvió una respuesta vacía")
             payload = normalize_llm_turn_payload(self._groq._parse_json(raw_text))  # noqa: SLF001
             output = LLMTurnOutput.model_validate(payload)
-            return self._groq._validate_sources(output, retrieved_chunks)  # noqa: SLF001
+            return self._groq._validate_sources(output, retrieved_chunks), usage  # noqa: SLF001
 
         try:
             return with_groq_retry(_call, operation_name="groq_stream_structured")
