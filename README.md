@@ -1,227 +1,326 @@
-# Tech Sphere Challenge 2026 — Repositorio base
+# postop-voice-agent — Agente de voz postoperatorio
 
-**Vas a construir un agente de voz con IA para seguimiento postoperatorio.**
+Agente de **voz en tiempo real** para seguimiento postoperatorio en español (Colombia). Conversa
+con el paciente por WebRTC, consulta guías clínicas (RAG), puntúa severidad con protocolos JSON
+y decide si escalar a personal humano.
 
-Un paciente sale de un procedimiento y necesita que alguien esté pendiente de él en las
-primeras horas. Tu agente hace esa llamada: conversa con el paciente, entiende sus
-síntomas con información clínica real, y decide cuándo alertar a personal capacitado.
+**Dos superficies funcionales:**
 
-Este es el **repositorio base del reto**. Clónalo: aquí están los datos con los que vas
-a trabajar, la definición de lo que se espera de tu solución y las reglas con las que se
-va a evaluar.
-
-- **Cómo se evalúa tu entrega** → `[docs/rubrica-evaluacion.md](docs/rubrica-evaluacion.md)`
-- **Stack abierto y modelos permitidos** → `[docs/stack-tecnico.md](docs/stack-tecnico.md)`
-- **Los datos** → `[data/](data/)`
+| Superficie | URL (Docker local) | Qué hace |
+| ---------- | ------------------ | -------- |
+| **App paciente (María)** | http://localhost:3000 | Registro + llamada de voz |
+| **Consola admin** | http://localhost:8080 | Subir/listar/eliminar PDFs + ver llamadas |
 
 ---
 
-## El problema
+## Levantamiento en ≤15 minutos (compuerta G2)
 
-El seguimiento postoperatorio depende hoy de personal humano: es costoso, no escala y
-está sujeto a errores. El paciente, mientras tanto, no tiene conocimiento médico —a veces
-ni un termómetro— y describe lo que siente en lenguaje cotidiano, ambiguo y regional:
+Sigue **solo este README**, en orden. El cronómetro mide desde `git clone` hasta que las URLs
+anteriores responden y el agente está listo para llamadas.
 
-> *"Me duele como aquí abajito de la axila hace como 20 minutos."*
+**No cuenta contra los 15 minutos:** las pruebas funcionales del jurado después del arranque.
 
-En paralelo, la operación clínica vive en conocimiento no estructurado —manuales,
-instructivos, guías, PDFs, notas— que **cambia de versión constantemente**. El agente
-debe reflejar siempre la versión vigente sin contaminarse con la anterior.
+### Requisitos previos
 
-Tres cosas hacen este reto distinto de un chatbot cualquiera:
+| Requisito | Versión / nota | Comprobar |
+| --------- | -------------- | --------- |
+| Docker Engine | 24+ | `docker --version` |
+| Docker Compose | v2 | `docker compose version` |
+| Git | reciente | `git --version` |
+| RAM libre | ~8 GB | Primera build descarga Kokoro + Granite |
+| Disco Docker | ≥ 20 GB | Docker Desktop → Settings → Resources |
+| Navegador | Chrome o Edge | WebRTC + micrófono |
 
-- **Es voz, no chat.** Conversación en tiempo real, con todo lo que eso implica:
-latencia, silencios incómodos, respuestas largas inviables.
-- **Es salud, no e-commerce.** Cero tolerancia a alucinaciones, respuestas fundamentadas
-en el corpus clínico, y honestidad explícita cuando el agente no sabe.
-- **El conocimiento es vivo, no estático.** El RAG debe poder actualizarse —aprender y
-olvidar— en caliente.
+### API keys obligatorias
 
-## Qué construyes
+Obtén las tres claves **antes** de empezar el cronómetro (crear cuenta gratuita en cada servicio):
 
-- Una conversación de voz que se adapta a las respuestas del paciente.
-- Respuestas fundamentadas en una base de conocimiento clínico (RAG).
-- Una consola para actualizar el conocimiento en caliente: subes un documento y el agente
-lo aprende; lo eliminas y lo olvida.
-- Trazabilidad: cada respuesta clínica registra qué documento la sustenta.
-- Una lógica de decisión: ¿esto amerita alertar a un humano, o no?
-- Un resumen estructurado de cada llamada.
-
-### Qué no necesitas construir
-
-Telefonía real en producción · integración con sistemas hospitalarios reales ·
-autenticación empresarial o gestión de roles · cobertura de todos los procedimientos
-médicos existentes.
-
-### Las dos superficies
-
-Tu solución debe exponer dos superficies. Pueden ser una sola aplicación o dos; el diseño
-visual no se evalúa, pero el contrato funcional sí:
-
-
-| Superficie                    | Qué representa                                             | Contrato funcional mínimo                                                                                          |
-| ----------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| **Consola de administración** | El back-office del producto real: gestión del conocimiento | Subir documento · listar documentos cargados · eliminar documento · indicación visible de "procesado y disponible" |
-| **Interfaz de llamada**       | La llamada telefónica de producción                        | Iniciar llamada de voz desde el navegador · hablar (micrófono) · escuchar al agente                                |
-
-
-Puedes ofrecer además API, CLI o una carpeta que el sistema vigile e ingiera
-automáticamente, pero la consola es exigida.
-
-### Restricciones
-
-- **El stack es abierto; el modelo, no.** Orquestación, voz, RAG y embeddings los eliges
-tú, pero el modelo de lenguaje debe ser uno de los
-[permitidos](docs/stack-tecnico.md#1-los-modelos-permitidos) — y tienes que declarar en
-tu informe cuál usaste y por qué. Mismas opciones sobre la mesa: gana la ingeniería, no
-la billetera.
-- La llamada va vía **navegador/API**. No hay telefonía real.
-- El agente conversa en **español**, con pacientes colombianos que usan regionalismos y
-descripciones ambiguas.
-- Tu repositorio debe ser **público en GitHub**, con README y dependencias declaradas.
+| Variable en `.env` | Dónde obtenerla | Para qué |
+| ------------------ | --------------- | -------- |
+| `GROQ_API_KEY` | https://console.groq.com/ | Conversación del agente (Llama 3.3 70B) |
+| `GEMINI_API_KEY` | https://aistudio.google.com/apikey | Validación de PDFs + protocolos clínicos |
+| `DEEPGRAM_API_KEY` | https://console.deepgram.com/ | Speech-to-Text (Nova-2, español) |
 
 ---
 
-## Los datos: `data/`
+### Paso 1 — Clonar el repositorio
 
-Todos los datos del reto están en la carpeta `[data/](data/)` de este repositorio.
-No hay que conectarse a nada externo para obtenerlos.
-
-Son **datos sintéticos**. Ningún paciente, nombre, cédula, dirección o EPS corresponde a
-una persona real.
-
-
-| Archivo                                           | Qué es                                                                                                                                                                                                                                                                                                                                          |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dataset_final.xlsx`                              | **Las conversaciones.** 3.991 filas × 13 columnas: una fila es un turno, no una conversación. 40 pacientes, 160 casos (uno por paciente y día postoperatorio: 1, 3, 7 y 14), dos capas de dificultad. Incluye `label_ground_truth` con la criticidad de referencia del caso —`verde`, `amarillo` o `rojo`—, constante dentro de cada `caso_id`. |
-| `trayectorias_postop_silver.xlsx`                 | **El cuadro clínico real de cada llamada**: dolor, fiebre, movilidad, estado de la herida, apetito y sueño, más el arquetipo de recuperación. 160 filas, una por caso. Es lo que el paciente está viviendo y el agente solo puede averiguar conversando.                                                                                        |
-| `perfiles_clinicos_pacientes_silver_contest.xlsx` | **Perfil clínico** por paciente: procedimiento, fecha de cirugía, edad, género, comorbilidades. 40 filas.                                                                                                                                                                                                                                       |
-| `perfiles_pacientes_co.xlsx`                      | **Demografía colombiana** sintética: nombre, dirección, ciudad, departamento, documento y EPS.a 40 filas. Se derivó de una población simulada estadounidense y se adaptó a Colombia; `adaptation_fields` lista qué campos se sustituyeron.                                                                                                      |
-| `textos/`                                         | **El corpus clínico**: 107 documentos PDF en español e inglés —guías de práctica clínica, protocolos de recuperación, papers de complicaciones postoperatorias, planes de cuidado e instructivos para el paciente—, repartidos en cinco carpetas por escenario. Es el combustible de tu RAG.                                                    |
-
-
-### Las dos capas
-
-`capa1_limpia` son conversaciones ordenadas: el paciente responde lo que se le pregunta.
-`capa2_ruidosa` es la misma conversación degradada con ruido realista —respuestas
-evasivas o ambiguas, información faltante, síntomas irrelevantes, interrupciones de un
-familiar—.
-
-**Un mismo `caso_id` contiene ambas versiones de la llamada**, así que filtra por `capa`
-antes de reconstruir una conversación. Los turnos de la capa 2 derivados de un turno de la
-capa 1 llevan el mismo `dialogo_id` con sufijo `_c2`; los turnos insertados por un tercero
-llevan `_c2_tercero`.
-
-### Cómo se relacionan los archivos
-
-`paciente_id` une los cuatro archivos. El join entre conversaciones y trayectorias **no
-es directo**:
-
-```
-caso_id  =  "caso_" + trayectoria_id
+```bash
+git clone https://github.com/PaulaZuluagaG/postop-voice-agent.git
+cd postop-voice-agent
 ```
 
-Un paciente tiene un perfil clínico, un perfil demográfico y cuatro trayectorias (una por
-día postoperatorio); cada trayectoria corresponde a un caso, y cada caso a una
-conversación en sus dos capas.
+Comprueba que el repo trae datos y bootstrap (arranque rápido sin re-ingestar):
 
-### Antes de que empieces
-
-- Las clases están **desbalanceadas**, como en la realidad: de los 160 casos, 123 son
-`verde`, 25 `amarillo` y 12 `rojo`.
-- `comorbilidades` y `adaptation_fields` son **listas JSON dentro de una celda de texto**.
-- Los cuatro `.xlsx` tienen **una sola hoja, llamada `result`**.
-- En `data/textos/`, hay **12 PDFs con señal de escaneo** (≥1 página con imagen y poco texto nativo), pero solo **1** queda bajo el mínimo de ingestión sin OCR; el resto suele ser portada escaneada.
-- El material entregado **no es todo el material de evaluación**. Habrá conocimiento
-clínico que tu agente no habrá visto antes.
+```bash
+ls data/textos/                          # carpetas con PDFs clínicos
+ls bootstrap/protocols/*/protocol.json   # protocolos seed
+ls bootstrap/qdrant/*.snapshot           # snapshot Qdrant precalculado
+```
 
 ---
 
-## Qué debes entregar
+### Paso 2 — Configurar credenciales (`.env`)
 
+```bash
+cp .env.example .env
+```
 
-| #      | Entregable                                                                                                                                                                           |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **01** | **Repositorio** público en GitHub, con tu implementación completa y documentación clara                                                                                              |
-| **02** | **Diagrama** de la arquitectura de tu solución y del flujo de decisión del agente                                                                                                    |
-| **03** | **Informe final** con evidencia de tu proceso —prompts, configuraciones, capturas del demo— y la declaración explícita de qué modelo usaste y por qué lo elegiste                    |
-| **04** | **Video**: demo funcional con grabación de pantalla, más las [dos preguntas de cierre](docs/rubrica-evaluacion.md#las-dos-preguntas-de-cierre-del-video) respondidas frente a cámara |
+Edita `.env` y reemplaza **como mínimo** estas cinco variables:
 
+```env
+GROQ_API_KEY=gsk_tu_clave_groq
+GEMINI_API_KEY=AI_tu_clave_gemini
+DEEPGRAM_API_KEY=tu_clave_deepgram
+ADMIN_TOKEN=elige_un_token_largo_y_secreto
+NEXT_PUBLIC_VOICE_API_URL=http://localhost:7860
+```
 
-## Cómo se evalúa
+**`ADMIN_TOKEN`:** inventa un valor largo (p. ej. `postop-demo-2026-cambiar-esto`). Lo pegarás
+después en http://localhost:8080. Debe coincidir **exactamente** con el valor en `.env`.
 
-Dos fases: **cinco compuertas eliminatorias** y una **rúbrica de 100 puntos** repartida
-en seis criterios. Lo que no pasa las compuertas no se puntúa.
-
-Entre las compuertas hay una que conviene tener presente desde el primer commit: **tu
-solución debe ser levantable en 15 minutos o menos siguiendo únicamente tu README.**
-
-El detalle completo —las cinco compuertas, los seis criterios con sus pesos, las métricas
-que tu README debe reportar y las conductas que penalizan— está en
-`[docs/rubrica-evaluacion.md](docs/rubrica-evaluacion.md)`. Léelo antes de empezar a
-construir.
-
-## Cronograma 2026
-
-
-| Fecha           | Hito                                                                                                            |
-| --------------- | --------------------------------------------------------------------------------------------------------------- |
-| **22 jul**      | Live + apertura de inscripciones                                                                                |
-| **7 – 10 ago**  | Construcción: recibes este repositorio y el material técnico, y entregas el 10 de agosto                        |
-| **10 – 18 ago** | Revisiones y anuncio de los 3 finalistas                                                                        |
-| **5 sep**       | Ganadores: panel de expertos y demo en vivo de los 3 finalistas, durante el evento de premiación de Tech Sphere |
-
+**No cambies** `NEXT_PUBLIC_VOICE_API_URL` salvo que cambies también el puerto de voz en Docker.
 
 ---
 
-## Estructura del proyecto
+### Paso 3 — Levantar todo el stack (un solo comando)
 
-```
-postop-voice-agent/
-├── src/                    # Paquetes Python instalables
-│   ├── core/               # Configuración, modelos de dominio, registro de pacientes
-│   ├── knowledge/          # RAG: ingest, Qdrant, retrieval, protocolos clínicos
-│   ├── agent/              # Orquestador, scoring, LLM (Groq), memoria, trazabilidad
-│   ├── api/                # Consola admin (FastAPI)
-│   └── voice/              # Pipeline Pipecat: STT, TTS, WebRTC
-├── apps/
-│   ├── admin-ui/           # UI estática de la consola de conocimiento
-│   └── voice-ui/           # Frontend Next.js para llamadas de voz (María)
-├── data/                   # Corpus clínico (PDFs) y datasets de evaluación (.xlsx)
-├── bootstrap/              # Artefactos precalculados (protocolos + snapshot Qdrant)
-├── storage/                # Runtime: protocolos activos, logs (gitignored except .gitkeep)
-├── scripts/                # Utilidades de desarrollo (benchmarks, demos, ingest helpers)
-├── tests/                  # Suite pytest
-└── docs/                   # Documentación del reto
+```bash
+chmod +x scripts/docker-eval-up.sh
+./scripts/docker-eval-up.sh
 ```
 
-**Flujo en runtime:** micrófono o texto → Pipecat (`voice/`) → orquestador (`agent/`) →
-RAG + protocolo (`knowledge/`) → Groq → Kokoro TTS → respuesta de voz.
+El script ejecuta, en orden:
 
-**Comandos principales:**
+1. **Build** de backend + frontends (sin Jupyter).
+2. **`docker compose up -d`** — 5 servicios: Qdrant, API admin, voz, frontend paciente, frontend admin.
+3. **Bootstrap Qdrant** — restaura el snapshot de `bootstrap/qdrant/`. Si falla, ingesta PDFs con `--skip-protocols`.
+4. **Verificación** — comprueba `/api/readiness` del backend de voz.
 
-| Comando | Descripción |
-| ------- | ----------- |
-| `uv run postop-voice` | Agente de voz en consola |
-| `uv run postop-voice-web` | Servidor WebRTC para el frontend |
-| `uv run postop-admin` | API + consola de conocimiento clínico |
-| `uv run postop-ingest` | Ingesta batch de PDFs a Qdrant |
-| `uv run postop-protocols` | Generación de protocolos clínicos |
+**Tiempo típico:**
 
-**Docker (evaluación G2):** ver [`docs/docker-guia.md`](docs/docker-guia.md) y `./scripts/docker-eval-up.sh`.
+| Escenario | Duración |
+| --------- | -------- |
+| Primera vez (con snapshot en repo) | **2–10 min** |
+| Arranques posteriores (caché Docker) | **1–3 min** |
+
+Al terminar debe aparecer:
+
+```
+OK: agente listo para llamadas.
+
+URLs:
+  Paciente:  http://localhost:3000
+  Admin:     http://localhost:8080
+  Voice API: http://localhost:7860/api/readiness
+```
+
+Si el script termina con `WARN` en readiness, sigue el [Paso 4](#paso-4--verificar-que-todo-responde) y la tabla de problemas al final.
+
+---
+
+### Paso 4 — Verificar que todo responde
+
+Ejecuta cada comando. Todos deben terminar sin error:
+
+```bash
+docker compose ps
+curl -sf http://localhost:6333/readyz && echo " → Qdrant OK"
+curl -sf http://localhost:8000/openapi.json > /dev/null && echo " → Admin API OK"
+curl -sf http://localhost:7860/status && echo ""
+curl -sf http://localhost:7860/api/readiness | python3 -m json.tool
+curl -sf http://localhost:3000 > /dev/null && echo " → Frontend paciente OK"
+curl -sf http://localhost:8080 > /dev/null && echo " → Frontend admin OK"
+```
+
+**Resultado esperado de readiness:**
+
+```json
+{
+  "ready": true,
+  "detail": "Listo para llamadas de voz.",
+  "indexed_documents": 107,
+  "indexed_procedures": ["appendicitis", "..."],
+  "missing_protocols": []
+}
+```
+
+Si `"ready": false`, lee `"detail"` y consulta [Solución de problemas](#solución-de-problemas).
+
+---
+
+### Paso 5 — Acceder a la consola admin
+
+1. Abre **http://localhost:8080**
+2. En **Token de administrador**, pega el valor de `ADMIN_TOKEN` de tu `.env`
+3. Pulsa **Guardar token**
+4. Pestaña **Documentos** → **Actualizar** → debe listar PDFs indexados
+
+**Subir un PDF (hot reload):**
+
+1. Selecciona archivo PDF + tipo de procedimiento (p. ej. `appendicitis`)
+2. **Subir e indexar** → espera toast de éxito (~30 s – 2 min)
+3. **Actualizar** → el documento aparece en la tabla
+
+---
+
+### Paso 6 — Probar la llamada de voz
+
+1. Abre **http://localhost:3000**
+2. Completa el formulario:
+
+   | Campo | Ejemplo |
+   | ----- | ------- |
+   | Nombre | María González |
+   | ID paciente | PAC-001 |
+   | Día postoperatorio | Día 1 |
+   | Procedimiento | Appendicitis |
+
+3. **Iniciar seguimiento** → el botón **Iniciar llamada** debe estar activo (no gris)
+4. **Iniciar llamada** → acepta permiso de **micrófono**
+5. Escucha a María (TTS) y responde en voz alta
+6. **Finalizar llamada** → aparece resumen de severidad en pantalla
+7. En admin → pestaña **Llamadas** → **Actualizar** → la llamada debe aparecer
+
+Trazas en disco: `storage/logs/calls/<uuid>/`
+
+---
+
+### Detener y volver a levantar
+
+```bash
+docker compose down          # para servicios; conserva datos
+./scripts/docker-eval-up.sh  # levantar de nuevo (sin rebuild si no hubo cambios)
+```
+
+Arranque en frío (borra volumen Qdrant; el snapshot se restaura solo):
+
+```bash
+docker compose down -v
+./scripts/docker-eval-up.sh
+```
+
+---
+
+## URLs y accesos (referencia rápida)
+
+| Servicio | URL | Autenticación |
+| -------- | --- | ------------- |
+| App paciente | http://localhost:3000 | Ninguna |
+| Consola admin | http://localhost:8080 | Token = `ADMIN_TOKEN` del `.env` |
+| API admin (OpenAPI) | http://localhost:8000/docs | Header `Authorization: Bearer <ADMIN_TOKEN>` |
+| Backend voz (readiness) | http://localhost:7860/api/readiness | Ninguna |
+| Qdrant REST | http://localhost:6333 | Ninguna (solo local) |
+
+---
+
+## Modelos LLM declarados
+
+| Rol | Modelo | Proveedor | Variable |
+| --- | ------ | --------- | -------- |
+| Conversación en tiempo real | **Llama 3.3 70B Versatile** | Groq | `GROQ_MODEL=llama-3.3-70b-versatile` |
+| Protocolos JSON + validación PDF | **Gemini 3.6 Flash** | Google AI | `GEMINI_MODEL=gemini-3.6-flash` |
+
+**No-LLM (stack de voz/RAG):** IBM Granite embeddings · Deepgram Nova-2 STT · Kokoro TTS · Qdrant v1.19.
+
+Detalle de la elección: [`docs/proyecto/README.md`](docs/proyecto/README.md#3-declaración-de-modelos-llm).
+
+---
+
+## Métricas operativas (rúbrica §5)
+
+Medidas y metodología completa en [`docs/metrics/README.md`](docs/metrics/README.md).
+Evidencia JSON: [`docs/metrics/`](docs/metrics/).
+
+### Latencia de respuesta (paciente deja de hablar → empieza audio del agente)
+
+| Escenario | P50 | P95 |
+| --------- | ---: | ---: |
+| Turno en caliente | **~2,4 s** | **~3,2 s** |
+| Primer turno (cold start) | — | **~7,5 s** |
+
+Componentes medidos (turno en caliente): RAG warm P50 **37 ms** · Groq LLM **600–1 200 ms** · Kokoro TTFB **1 071 ms** · Deepgram STT post-utterance **~250 ms** (referencia).
+
+Regenerar benchmarks:
+
+```bash
+uv run postop-call-metrics --retrieval-only --output docs/metrics/rag-latency.json
+uv run python scripts/benchmark_kokoro_tts.py
+```
+
+### Consumo por turno y por llamada (~5 turnos)
+
+| Métrica | Por turno | Por llamada |
+| ------- | -------: | ----------: |
+| Tokens entrada | ~3 200 | ~16 000 |
+| Tokens salida | ~220 | ~1 100 |
+| Invocaciones LLM (Groq) | 1 | ~5 |
+| Consultas RAG (Qdrant) | 1 | ~6 (incl. apertura) |
+
+### Costo estimado por llamada (extrapolación API producción)
+
+| Concepto | USD |
+| -------- | ---: |
+| Groq (tokens) | ~0,011 |
+| Deepgram (~4 min STT) | ~0,023 |
+| **Total** | **~0,034** |
+
+Kokoro TTS y embeddings Granite corren local → USD 0.
+
+---
+
+## Solución de problemas
+
+| Síntoma | Qué hacer |
+| ------- | --------- |
+| `ERROR: falta .env` | `cp .env.example .env` y configura las API keys |
+| `"ready": false` — sin documentos | Re-ejecuta `./scripts/docker-eval-up.sh` |
+| `"ready": false` — faltan protocolos | `cp -a bootstrap/protocols/. storage/protocols/` y `docker compose restart backend-voice` |
+| Admin: token inválido | Verifica que `ADMIN_TOKEN` en `.env` = token pegado en http://localhost:8080; `docker compose restart backend-api` |
+| Botón de llamada deshabilitado | `curl -sf http://localhost:7860/api/readiness \| python3 -m json.tool` → sigue `"detail"` |
+| WebRTC / voz no conecta | Confirma `NEXT_PUBLIC_VOICE_API_URL=http://localhost:7860` en `.env`; rebuild: `docker compose build frontend-paciente && docker compose up -d frontend-paciente` |
+| Groq 429 | Cuota diaria agotada; espera reset o reduce pruebas |
+| Build falla por disco | Libera espacio en Docker Desktop; `docker system prune -f` |
+| Micrófono bloqueado | Chrome → candado en barra URL → permitir micrófono |
+
+Logs en vivo:
+
+```bash
+docker compose logs -f backend-voice frontend-paciente
+docker compose logs -f backend-api
+```
+
+---
+
+## Qué hace el sistema (resumen)
+
+- **RAG:** 107 PDFs clínicos → chunks en Qdrant (`postop_clinical_knowledge`) → retrieval por turno.
+- **Protocolos JSON:** síntomas, umbrales y alertas por procedimiento en `storage/protocols/`.
+- **Decisión clínica:** Python aplica scoring determinístico; el LLM conversa y extrae datos, no decide alertas.
+- **Hot reload:** admin sube PDF → validación Gemini → reindex Qdrant → regenera protocolo.
+- **Trazabilidad:** cada llamada en `storage/logs/calls/{call_id}/`.
+
+Diagramas: [`docs/arquitectura/README.md`](docs/arquitectura/README.md)
+
+---
+
+## Documentación adicional
+
+| Tema | Enlace |
+| ---- | ------ |
+| Informe completo (prompts, config, capturas) | [`docs/proyecto/README.md`](docs/proyecto/README.md) |
+| Docker (detalle técnico) | [`docs/docker-guia.md`](docs/docker-guia.md) |
+| Rúbrica de evaluación | [`docs/rubrica-evaluacion.md`](docs/rubrica-evaluacion.md) |
+| Stack permitido | [`docs/stack-tecnico.md`](docs/stack-tecnico.md) |
+| Datos del reto (`data/`) | [`docs/analisis-exploratorio-datos/hallazgos.md`](docs/analisis-exploratorio-datos/hallazgos.md) |
+
+---
 
 ## Licencia y avisos
 
-El código y los datos sintéticos de este repositorio se distribuyen bajo licencia MIT
-(ver `[LICENSE](LICENSE)`).
+Código y datos sintéticos: licencia MIT ([`LICENSE`](LICENSE)).
 
-Los documentos PDF de `data/textos/` son obra de sus respectivos autores y editores,
-conservan sus propios derechos y se incluyen únicamente como material de referencia para
-el reto.
+Los PDFs de `data/textos/` son obra de sus autores; se incluyen solo como material de referencia
+del reto. Los datos clínicos son **sintéticos** y no tienen validez clínica real.
 
-Los datos clínicos son **sintéticos y no han sido validados clínicamente**. No sirven para
-ninguna finalidad clínica, diagnóstica ni asistencial fuera de este reto.
-
-## Contacto
-
-[communications@sourcemeridian.com](mailto:communications@sourcemeridian.com)
+**Contacto:** [communications@sourcemeridian.com](mailto:communications@sourcemeridian.com)

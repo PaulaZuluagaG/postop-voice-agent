@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 
+from agent.decision.scoring import detect_critical_alert, resolve_severity
+from agent.decision.session_protocol import protocol_from_session
 from core.config import Settings, get_settings
 from core.models import CallSessionState, CallSummary, SeverityLevel
 from core.scenarios import scenario_label
@@ -75,6 +77,34 @@ def build_next_steps(
         "Seguimiento rutinario completado. Contactar al equipo de salud "
         "si aparecen nuevos síntomas."
     )
+
+
+def resolve_call_triage(
+    session: CallSessionState,
+    *,
+    closed_reason: str,
+) -> tuple[SeverityLevel, bool, str, bool]:
+    """Single source of truth for severity, alert flag, next steps, and follow-up."""
+    protocol = protocol_from_session(session)
+    symptoms = consolidate_symptoms_reported(session)
+
+    alert = session.alert_triggered or any(turn.alert_triggered for turn in session.turns)
+    if closed_reason == "alert_triggered":
+        alert = True
+    if detect_critical_alert(symptoms, protocol):
+        alert = True
+
+    severity = resolve_severity(session.cumulative_score, protocol.thresholds)
+    if alert:
+        severity = SeverityLevel.RED
+
+    follow_up = severity == SeverityLevel.YELLOW and not alert
+    next_steps = build_next_steps(
+        severity=severity,
+        alert_triggered=alert,
+        follow_up_recommended=follow_up,
+    )
+    return severity, alert, next_steps, follow_up
 
 
 def resolve_source_labels(

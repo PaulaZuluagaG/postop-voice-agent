@@ -49,6 +49,9 @@ services:
       CALLS_LOG_DIR: /app/storage/logs/calls
       API_HOST: 0.0.0.0
       API_PORT: 8000
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      TOKENIZERS_PARALLELISM: "false"
     command: ["postop-admin"]
     ports:
       - "${API_PORT:-8000}:8000"
@@ -86,6 +89,9 @@ services:
       VOICE_WEB_HOST: 0.0.0.0
       VOICE_WEB_PORT: 7860
       VOICE_WEB_CORS_ORIGINS: ${VOICE_WEB_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      TOKENIZERS_PARALLELISM: "false"
     command: ["postop-voice-web"]
     ports:
       - "${VOICE_WEB_PORT:-7860}:7860"

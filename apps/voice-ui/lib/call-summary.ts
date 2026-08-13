@@ -6,11 +6,47 @@ export type CallSummary = {
   patient_name: string
   patient_id?: string | null
   decision_label: string
+  alert_triggered?: boolean
   symptoms_reported: Record<string, unknown>
   next_steps: string
   clinical_summary: string
   final_score: number
   sources_used: string[]
+}
+
+const ESCALATION_NEXT_STEP_MARKERS = [
+  "evaluación presencial",
+  "escalar al equipo",
+] as const
+
+function isEscalationNextStep(nextSteps: string): boolean {
+  const normalized = nextSteps.toLowerCase()
+  return ESCALATION_NEXT_STEP_MARKERS.some((marker) => normalized.includes(marker))
+}
+
+export function displayDecisionLabel(summary: Pick<CallSummary, "decision_label" | "alert_triggered" | "next_steps">): string {
+  if (
+    summary.alert_triggered ||
+    summary.decision_label.toLowerCase() === "rojo" ||
+    isEscalationNextStep(summary.next_steps)
+  ) {
+    return decisionLabelEs("rojo")
+  }
+  return decisionLabelEs(summary.decision_label)
+}
+
+export function displayDecisionTone(summary: Pick<CallSummary, "decision_label" | "alert_triggered" | "next_steps">): string {
+  if (
+    summary.alert_triggered ||
+    summary.decision_label.toLowerCase() === "rojo" ||
+    isEscalationNextStep(summary.next_steps)
+  ) {
+    return "border-rose-200 bg-rose-50 text-rose-800"
+  }
+  if (summary.decision_label.toLowerCase() === "amarillo") {
+    return "border-amber-200 bg-amber-50 text-amber-900"
+  }
+  return "border-emerald-200 bg-emerald-50 text-emerald-800"
 }
 
 export function decisionLabelEs(label: string): string {

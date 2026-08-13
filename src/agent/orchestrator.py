@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import time
 from collections.abc import AsyncIterator
@@ -12,8 +13,8 @@ from uuid import UUID, uuid4
 
 from agent.decision.clinical_summary import (
     build_clinical_summary,
-    build_next_steps,
     consolidate_symptoms_reported,
+    resolve_call_triage,
     resolve_source_labels,
 )
 from agent.decision.disclaimer_policy import should_replace_with_disclaimer
@@ -30,7 +31,11 @@ from agent.decision.protocol_triage import (
     pending_symptoms,
     update_covered_symptoms,
 )
-from agent.decision.response_shaping import soften_patient_echo
+from agent.decision.response_shaping import (
+    append_unique_question,
+    is_redundant_speech_suffix,
+    soften_patient_echo,
+)
 from agent.decision.scoring import (
     apply_cumulative_score,
     apply_risk_factor_bonus,
@@ -56,6 +61,7 @@ from agent.messages import (
     build_procedure_mismatch_message,
     closure_message_for_severity,
 )
+from agent.metrics.aggregation import aggregate_call_usage
 from agent.traceability.logger import CallTraceLogger
 from core.config import Settings, get_settings
 from core.exceptions import LLMCancelledError, SessionError
@@ -71,6 +77,8 @@ from core.models import (
 )
 from core.scenarios import procedure_display_label, scenario_to_procedure_id
 from knowledge.retrieval.retriever import ContextualRetriever
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -264,7 +272,7 @@ class ConversationOrchestrator:
         )
 
         llm_start = time.perf_counter()
-        llm_output = self._llm.generate_turn(
+        llm_output, llm_usage = self._llm.generate_turn(
             patient_message=patient_message,
             patient_name=session.patient_name,
             procedimiento=procedimiento,
@@ -334,11 +342,36 @@ class ConversationOrchestrator:
                 decision_ms=0.0,
                 total_ms=total_ms,
             ),
+            llm_usage=llm_usage,
+            llm_invocations=1,
+            rag_queries=1,
         )
         session.turns.append(turn)
         turn = self._apply_close_reason(session, turn, llm_output, alert=decision.alert)
         self._trace.log_turn(session.call_id, turn)
         return turn
+
+    def apply_voice_timings(
+        self,
+        call_id: UUID,
+        *,
+        voice_response_ms: float,
+        tts_ttfb_ms: float | None = None,
+    ) -> None:
+        """Patch the latest turn with end-to-end voice latency after TTS starts."""
+        session = self.get_session(call_id)
+        if not session.turns:
+            return
+        turn = session.turns[-1]
+        timings = turn.timings.model_copy(
+            update={
+                "voice_response_ms": voice_response_ms,
+                "tts_ttfb_ms": tts_ttfb_ms or turn.timings.tts_ttfb_ms,
+            }
+        )
+        updated = turn.model_copy(update={"timings": timings})
+        session.turns[-1] = updated
+        self._trace.log_turn(call_id, updated)
 
     async def stream_turn_response(
         self,
@@ -365,6 +398,13 @@ class ConversationOrchestrator:
             postop_day=session.postop_day,
             conversation_context=memory.rag_context,
         )
+        if retrieval_ms >= 500:
+            logger.info(
+                "RAG turno %s | retrieval_ms=%.0f | procedure=%s",
+                session.turn_count + 1,
+                retrieval_ms,
+                session.procedure_id,
+            )
 
         llm_start = time.perf_counter()
         stream = self._streaming_llm.stream_turn(
@@ -387,10 +427,13 @@ class ConversationOrchestrator:
         )
 
         streamed_parts: list[str] = []
+        first_token_ms = 0.0
         async for token in stream.tokens:
             if cancel_event and cancel_event.is_set():
                 await drain_output_future(stream.output_future)
                 return
+            if token and first_token_ms == 0.0:
+                first_token_ms = (time.perf_counter() - turn_start) * 1000
             streamed_parts.append(token)
             yield token
 
@@ -399,7 +442,7 @@ class ConversationOrchestrator:
             return
 
         try:
-            llm_output = await stream.output_future
+            llm_output, llm_usage = await stream.output_future
         except LLMCancelledError:
             return
         llm_ms = (time.perf_counter() - llm_start) * 1000
@@ -448,10 +491,8 @@ class ConversationOrchestrator:
                 yield agent_response
             elif agent_response.startswith(streamed_text):
                 suffix = agent_response[len(streamed_text) :].strip()
-                if suffix:
+                if suffix and not is_redundant_speech_suffix(streamed_text, suffix):
                     yield f" {suffix}"
-            elif agent_response != streamed_text:
-                yield agent_response
 
         for chunk in retrieved:
             session.sources_used.add(chunk.source_id)
@@ -481,8 +522,12 @@ class ConversationOrchestrator:
                 retrieval_ms=retrieval_ms,
                 llm_ms=llm_ms,
                 decision_ms=0.0,
+                first_token_ms=first_token_ms,
                 total_ms=total_ms,
             ),
+            llm_usage=llm_usage,
+            llm_invocations=1,
+            rag_queries=1,
         )
         session.turns.append(turn)
         if close_reason is not None:
@@ -494,6 +539,7 @@ class ConversationOrchestrator:
         call_id: UUID,
         *,
         cancel_event: asyncio.Event | None = None,
+        skip_rag: bool = False,
     ) -> AsyncIterator[str]:
         """Genera el mensaje de apertura en streaming."""
         session = self.get_session(call_id)
@@ -508,19 +554,28 @@ class ConversationOrchestrator:
             f"{procedimiento} día postoperatorio {session.postop_day}"
         )
 
-        rag_query, retrieved, retrieval_ms = self._retriever.retrieve(
-            bootstrap_message,
-            procedure_id=session.procedure_id,
-            postop_day=session.postop_day,
-        )
+        if skip_rag:
+            rag_query = bootstrap_message
+            retrieved: list = []
+            retrieval_ms = 0.0
+            has_evidence = not session.uses_general_protocol
+        else:
+            rag_query, retrieved, retrieval_ms = self._retriever.retrieve(
+                bootstrap_message,
+                procedure_id=session.procedure_id,
+                postop_day=session.postop_day,
+            )
+            if cancel_event and cancel_event.is_set():
+                return
+
+            has_evidence = has_procedure_specific_evidence(
+                retrieved,
+                session.procedure_scenario,
+                procedure_id=session.procedure_id,
+            )
+
         if cancel_event and cancel_event.is_set():
             return
-
-        has_evidence = has_procedure_specific_evidence(
-            retrieved,
-            session.procedure_scenario,
-            procedure_id=session.procedure_id,
-        )
 
         opening_message = self._compose_opening(session, has_evidence)
         session.opening_message = opening_message
@@ -709,14 +764,25 @@ class ConversationOrchestrator:
 
     def close_call(self, call_id: UUID, *, reason: str = "manual_close") -> CallSummary:
         session = self.get_session(call_id)
+        close_reason = session.last_closed_reason or reason if session.call_close_logged else reason
+        summary = self._build_summary(session, close_reason)
+
         if session.call_close_logged:
-            return self._build_summary(session, session.last_closed_reason or reason)
+            if (
+                summary.severity != session.logged_summary_severity
+                or summary.alert_triggered != session.logged_summary_alert
+            ):
+                self._trace.log_call_close(call_id, summary)
+                session.logged_summary_severity = summary.severity
+                session.logged_summary_alert = summary.alert_triggered
+            return summary
 
         session.call_closed = True
         session.last_closed_reason = reason
-        summary = self._build_summary(session, reason)
         self._trace.log_call_close(call_id, summary)
         session.call_close_logged = True
+        session.logged_summary_severity = summary.severity
+        session.logged_summary_alert = summary.alert_triggered
         return summary
 
     def _apply_risk_factor_bonus(self, session: CallSessionState) -> None:
@@ -738,6 +804,8 @@ class ConversationOrchestrator:
             session.cumulative_score,
             protocol.thresholds,
         )
+        if session.alert_triggered:
+            session.current_severity = SeverityLevel.RED
         self._trace.log_event(
             session.call_id,
             "risk_factor_bonus",
@@ -752,13 +820,13 @@ class ConversationOrchestrator:
 
     def _build_summary(self, session: CallSessionState, reason: str) -> CallSummary:
         self._apply_risk_factor_bonus(session)
-        follow_up = session.current_severity == SeverityLevel.YELLOW and not session.alert_triggered
-        symptoms_reported = consolidate_symptoms_reported(session)
-        next_steps = build_next_steps(
-            severity=session.current_severity,
-            alert_triggered=session.alert_triggered,
-            follow_up_recommended=follow_up,
+        severity, alert, next_steps, follow_up = resolve_call_triage(
+            session,
+            closed_reason=reason,
         )
+        session.alert_triggered = alert
+        session.current_severity = severity
+        symptoms_reported = consolidate_symptoms_reported(session)
         summary = CallSummary(
             call_id=session.call_id,
             procedure_id=session.procedure_id,
@@ -769,18 +837,19 @@ class ConversationOrchestrator:
             patient_name=session.patient_name,
             patient_id=session.patient_id,
             final_score=session.cumulative_score,
-            severity=session.current_severity,
-            decision_label=session.current_severity.value,
+            severity=severity,
+            decision_label=severity.value,
             symptoms_reported=symptoms_reported,
             next_steps=next_steps,
-            alert_triggered=session.alert_triggered,
-            physician_escalated=session.alert_triggered,
+            alert_triggered=alert,
+            physician_escalated=alert,
             vigilancia_recomendada=follow_up,
             follow_up_recommended=follow_up,
             sources_used=sorted(session.sources_used),
             turn_count=session.turn_count,
             closed_reason=reason,
             turn_history=session.turns,
+            usage=aggregate_call_usage(session.turns),
         )
         source_labels = resolve_source_labels(summary.sources_used, settings=self._settings)
         return summary.model_copy(
@@ -804,10 +873,10 @@ class ConversationOrchestrator:
         include_question: bool = True,
     ) -> str:
         if llm_output.categoria == ResponseCategory.ALERTA_IMPLICITA:
-            parts = [llm_output.texto_paciente.strip()]
+            text = llm_output.texto_paciente.strip()
             if include_question and llm_output.pregunta:
-                parts.append(llm_output.pregunta.strip())
-            return " ".join(parts).strip()
+                return append_unique_question(text, take_first_question(llm_output.pregunta))
+            return text
 
         pregunta = take_first_question(llm_output.pregunta) if include_question else None
 
@@ -824,9 +893,7 @@ class ConversationOrchestrator:
             notice = build_procedure_mismatch_message(mismatch, registered_scenario)
             base = f"{notice} {base}".strip()
 
-        if pregunta:
-            return f"{base} {pregunta}".strip()
-        return base
+        return append_unique_question(base, pregunta)
 
     def _compose_opening(
         self,
@@ -840,7 +907,7 @@ class ConversationOrchestrator:
             procedure_name=procedimiento,
             postop_day=session.postop_day,
         )
-        pregunta = next_protocol_question(session)
+        pregunta = take_first_question(next_protocol_question(session))
         if pregunta is None:
             pregunta = "¿Cómo se siente en este momento?"
-        return f"{intro} {pregunta}".strip()
+        return append_unique_question(intro, pregunta)

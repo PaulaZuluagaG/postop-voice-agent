@@ -1,0 +1,51 @@
+{
+  "generated_at": "2026-08-12T00:00:00+00:00",
+  "source": "component_benchmarks + instrumentation (regenerar tokens con postop-call-metrics)",
+  "methodology": {
+    "voice_latency": "Paciente termina de hablar (transcripción final STT / PostOpUserTurnFrame) → primer chunk de audio Kokoro (voice_response_ms en logs de turno).",
+    "orchestrator_latency": "Mismo punto de inicio → fin de generación Groq (timings.total_ms en TurnRecord).",
+    "tokens": "usage de Groq API por turno (llm_usage en TurnRecord y summary.usage al cerrar llamada).",
+    "rag": "1 consulta vectorial por turno de paciente (rag_queries=1)."
+  },
+  "voice_latency_ms": {
+    "samples": "medir en llamadas reales (storage/logs/calls/*/turns/*.json → timings.voice_response_ms)",
+    "warm_p50_estimate": 2400,
+    "warm_p95_estimate": 3200,
+    "cold_first_turn_estimate": 7500,
+    "components_ms": {
+      "deepgram_stt_end_of_turn_typical": 250,
+      "rag_p50_warm": 37,
+      "rag_first_query_cold": 5176,
+      "groq_llm_typical_range": "600–1200",
+      "kokoro_ttfb_sentence_mode": 1071
+    }
+  },
+  "orchestrator_latency_ms": {
+    "warm_p50_estimate": 900,
+    "warm_p95_estimate": 1400,
+    "note": "Excluye STT y TTS; ver timings.total_ms"
+  },
+  "per_turn": {
+    "avg_prompt_tokens": 3200,
+    "avg_completion_tokens": 220,
+    "avg_total_tokens": 3420,
+    "avg_llm_invocations": 1,
+    "avg_rag_queries": 1,
+    "note": "Promedios orientativos; regenerar con uv run postop-call-metrics --runs 2"
+  },
+  "per_call": {
+    "typical_turns": 5,
+    "avg_llm_invocations": 5,
+    "avg_rag_queries": 6,
+    "avg_prompt_tokens": 16000,
+    "avg_completion_tokens": 1100,
+    "avg_total_tokens": 17100,
+    "note": "Incluye 1 RAG de apertura sin LLM"
+  },
+  "cost_estimate_usd": {
+    "groq_usd": 0.0106,
+    "deepgram_usd": 0.0232,
+    "total_usd": 0.0338,
+    "assumptions": "Groq Llama 3.3 70B @ $0.59/M in + $0.79/M out; ~17k tokens/llamada; Deepgram @ $0.0058/min × 4 min STT"
+  }
+}

@@ -33,6 +33,8 @@ postop-protocols = "knowledge.cli.protocols:main"
 postop-admin = "api.main:main"
 postop-voice = "voice.main:main"
 postop-voice-web = "voice.web_server:main"
+postop-config-example = "core.cli_config:main"
+postop-call-metrics = "agent.cli.metrics:main"
 
 [dependency-groups]
 dev = [

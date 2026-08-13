@@ -279,6 +279,53 @@ class QdrantVectorStore:
 
         return self._run("list_sources", _scroll)
 
+    def get_source_content_hashes(self, procedure_id: str) -> dict[str, str]:
+        """Map indexed source_id -> content_hash for one procedure."""
+
+        def _scroll() -> dict[str, str]:
+            filter_values = qdrant_filter_values(canonical_procedure_id(procedure_id))
+            procedure_filter = qmodels.Filter(
+                should=[
+                    qmodels.FieldCondition(
+                        key="procedure_id",
+                        match=qmodels.MatchValue(value=value),
+                    )
+                    for value in filter_values
+                ]
+                + [
+                    qmodels.FieldCondition(
+                        key="procedure_scenario",
+                        match=qmodels.MatchValue(value=value),
+                    )
+                    for value in filter_values
+                ]
+            )
+            hashes: dict[str, str] = {}
+            offset = None
+            while True:
+                points, offset = self._client.scroll(
+                    collection_name=self.collection_name,
+                    scroll_filter=procedure_filter,
+                    limit=256,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                for point in points:
+                    payload = point.payload or {}
+                    source_id = payload.get("source_id")
+                    content_hash = payload.get("content_hash")
+                    if not source_id or not content_hash:
+                        continue
+                    source_key = str(source_id)
+                    if source_key not in hashes:
+                        hashes[source_key] = str(content_hash)
+                if offset is None:
+                    break
+            return hashes
+
+        return self._run("get_source_content_hashes", _scroll)
+
     def list_indexed_procedure_ids(self) -> list[str]:
         def _scroll() -> list[str]:
             procedure_ids: set[str] = set()

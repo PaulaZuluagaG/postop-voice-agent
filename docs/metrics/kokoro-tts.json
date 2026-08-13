@@ -1,0 +1,10 @@
+{
+  "mode": "kokoro_tts_benchmark",
+  "text_chars": 174,
+  "sentence_aggregation": {
+    "ttfb_ms": 1071,
+    "total_ms": 3146,
+    "audio_chunks": 3
+  },
+  "command": "uv run python scripts/benchmark_kokoro_tts.py"
+}

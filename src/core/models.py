@@ -151,10 +151,21 @@ class LLMTurnOutput(BaseModel):
         return self.categoria == ResponseCategory.ALERTA_IMPLICITA
 
 
+class LLMUsage(BaseModel):
+    """Token usage reported by the LLM provider for one completion."""
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
 class TurnTimings(BaseModel):
     retrieval_ms: float = 0.0
     llm_ms: float = 0.0
     decision_ms: float = 0.0
+    first_token_ms: float = 0.0
+    tts_ttfb_ms: float = 0.0
+    voice_response_ms: float = 0.0
     total_ms: float = 0.0
 
 
@@ -177,6 +188,19 @@ class TurnRecord(BaseModel):
     alert_triggered: bool = False
     severity: SeverityLevel = SeverityLevel.GREEN
     timings: TurnTimings = Field(default_factory=TurnTimings)
+    llm_usage: LLMUsage | None = None
+    llm_invocations: int = 1
+    rag_queries: int = 1
+
+
+class CallUsageMetrics(BaseModel):
+    """Aggregated LLM/RAG consumption for a full call."""
+
+    llm_invocations: int = 0
+    rag_queries: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
 
 
 class CallSessionState(BaseModel):
@@ -205,6 +229,8 @@ class CallSessionState(BaseModel):
     call_closed: bool = False
     call_close_logged: bool = False
     last_closed_reason: str | None = None
+    logged_summary_severity: SeverityLevel | None = None
+    logged_summary_alert: bool | None = None
     turn_count: int = 0
     turns: list[TurnRecord] = Field(default_factory=list)
     sources_used: set[str] = Field(default_factory=set)
@@ -233,6 +259,7 @@ class CallSummary(BaseModel):
     turn_count: int
     closed_reason: str
     turn_history: list[TurnRecord]
+    usage: CallUsageMetrics = Field(default_factory=CallUsageMetrics)
 
 
 class SourceAggregate(BaseModel):

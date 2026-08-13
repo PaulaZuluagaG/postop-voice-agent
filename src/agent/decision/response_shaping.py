@@ -36,6 +36,36 @@ def patient_echo_overlap(patient_message: str, agent_text: str) -> float:
     return matched / len(patient_tokens)
 
 
+def _normalize_spoken_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text.strip().lower())
+
+
+def is_redundant_speech_suffix(already_spoken: str, suffix: str) -> bool:
+    """Return True when TTS should not speak ``suffix`` after ``already_spoken``."""
+    spoken = _normalize_spoken_text(already_spoken)
+    extra = _normalize_spoken_text(suffix)
+    if not extra:
+        return True
+    if extra in spoken:
+        return True
+    spoken_trimmed = spoken.rstrip(".!? ")
+    extra_trimmed = extra.rstrip(".!? ")
+    return spoken_trimmed.endswith(extra_trimmed)
+
+
+def append_unique_question(base: str, pregunta: str | None) -> str:
+    """Append a protocol question only when it is not already in the patient text."""
+    text = base.strip()
+    if not pregunta:
+        return text
+    question = pregunta.strip()
+    if not question:
+        return text
+    if is_redundant_speech_suffix(text, question):
+        return text
+    return f"{text} {question}".strip()
+
+
 def soften_patient_echo(
     patient_message: str,
     agent_text: str,

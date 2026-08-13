@@ -6,7 +6,7 @@ import type { PatientData } from "./intake-form"
 import { Transcript } from "./transcript"
 import { Waveform } from "./waveform"
 import { Button } from "@/components/ui/button"
-import { decisionLabelEs, formatSymptoms, type CallSummary } from "@/lib/call-summary"
+import { displayDecisionLabel, displayDecisionTone, formatSymptoms, type CallSummary } from "@/lib/call-summary"
 import { useVoiceSession } from "@/lib/use-voice-session"
 
 function procedureLabel(patient: PatientData) {
@@ -205,15 +205,10 @@ function ClinicalSummaryCard({
   const postopDayLabel =
     summary?.postop_day !== undefined ? `Día ${summary.postop_day}` : "—"
   const symptoms = summary ? formatSymptoms(summary.symptoms_reported) : "—"
-  const decision = summary ? decisionLabelEs(summary.decision_label) : "—"
+  const decision = summary ? displayDecisionLabel(summary) : "—"
   const nextStep = summary?.next_steps || "—"
 
-  const decisionTone =
-    summary?.decision_label === "rojo"
-      ? "border-rose-200 bg-rose-50 text-rose-800"
-      : summary?.decision_label === "amarillo"
-        ? "border-amber-200 bg-amber-50 text-amber-900"
-        : "border-emerald-200 bg-emerald-50 text-emerald-800"
+  const decisionTone = summary ? displayDecisionTone(summary) : "border-emerald-200 bg-emerald-50 text-emerald-800"
 
   return (
     <section className="w-full max-w-md rounded-2xl border border-border bg-card p-4 text-left shadow-sm">

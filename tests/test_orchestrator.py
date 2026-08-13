@@ -5,12 +5,17 @@ from agent.orchestrator import ConversationOrchestrator
 from core.models import (
     DocumentType,
     LLMTurnOutput,
+    LLMUsage,
     ProcedureScenario,
     ResponseCategory,
     RetrievedChunk,
     SeverityLevel,
 )
 from knowledge.retrieval.retriever import ContextualRetriever
+
+
+def _llm_turn(output: LLMTurnOutput) -> tuple[LLMTurnOutput, LLMUsage]:
+    return output, LLMUsage(prompt_tokens=100, completion_tokens=50, total_tokens=150)
 
 
 class FakeRetriever(ContextualRetriever):
@@ -50,26 +55,30 @@ class FakeLLM:
         )
 
     def generate_turn(self, **kwargs):
-        return LLMTurnOutput(
-            categoria=ResponseCategory.RESPUESTA_VALIDA,
-            foco_sintoma="dolor_abdominal",
-            evidencia_suficiente=True,
-            sintomas={"dolor_abdominal": 6.0},
-            texto_paciente="Entiendo su molestia.",
-            pregunta="¿El dolor empeora al respirar?",
-            fuentes=["src_test"],
+        return _llm_turn(
+            LLMTurnOutput(
+                categoria=ResponseCategory.RESPUESTA_VALIDA,
+                foco_sintoma="dolor_abdominal",
+                evidencia_suficiente=True,
+                sintomas={"dolor_abdominal": 6.0},
+                texto_paciente="Entiendo su molestia.",
+                pregunta="¿El dolor empeora al respirar?",
+                fuentes=["src_test"],
+            )
         )
 
 
 class AlertLLM(FakeLLM):
     def generate_turn(self, **kwargs):
-        return LLMTurnOutput(
-            categoria=ResponseCategory.ALERTA_IMPLICITA,
-            foco_sintoma="infeccion_herida",
-            evidencia_suficiente=True,
-            sintomas={"infeccion_herida": "si"},
-            texto_paciente="Lo siento, esto no debería decir el LLM.",
-            pregunta=None,
+        return _llm_turn(
+            LLMTurnOutput(
+                categoria=ResponseCategory.ALERTA_IMPLICITA,
+                foco_sintoma="infeccion_herida",
+                evidencia_suficiente=True,
+                sintomas={"infeccion_herida": "si"},
+                texto_paciente="Lo siento, esto no debería decir el LLM.",
+                pregunta=None,
+            )
         )
 
 
@@ -95,11 +104,13 @@ def test_orchestrator_no_evidence_disclaimer() -> None:
 
     class NoEvidenceLLM:
         def generate_turn(self, **kwargs):
-            return LLMTurnOutput(
-                categoria=ResponseCategory.RESPUESTA_VALIDA,
-                evidencia_suficiente=False,
-                texto_paciente="Debe tomar antibióticos específicos.",
-                pregunta="¿Qué síntoma le preocupa más?",
+            return _llm_turn(
+                LLMTurnOutput(
+                    categoria=ResponseCategory.RESPUESTA_VALIDA,
+                    evidencia_suficiente=False,
+                    texto_paciente="Debe tomar antibióticos específicos.",
+                    pregunta="¿Qué síntoma le preocupa más?",
+                )
             )
 
     orchestrator = ConversationOrchestrator(
@@ -123,12 +134,14 @@ def test_orchestrator_accumulates_score_across_turns() -> None:
         def generate_turn(self, **kwargs):
             self._calls += 1
             pain = 6.0 if self._calls == 1 else 7.0
-            return LLMTurnOutput(
-                categoria=ResponseCategory.RESPUESTA_VALIDA,
-                foco_sintoma="dolor_abdominal",
-                sintomas={"dolor_abdominal": pain},
-                texto_paciente="Gracias por la información.",
-                pregunta="¿Ha tenido fiebre?",
+            return _llm_turn(
+                LLMTurnOutput(
+                    categoria=ResponseCategory.RESPUESTA_VALIDA,
+                    foco_sintoma="dolor_abdominal",
+                    sintomas={"dolor_abdominal": pain},
+                    texto_paciente="Gracias por la información.",
+                    pregunta="¿Ha tenido fiebre?",
+                )
             )
 
     orchestrator = ConversationOrchestrator(
@@ -157,15 +170,19 @@ def test_orchestrator_closes_call_after_max_turns() -> None:
             turno = kwargs.get("turno", 1)
             max_turnos = kwargs.get("max_turnos", 8)
             if turno >= max_turnos:
-                return LLMTurnOutput(
-                    categoria=ResponseCategory.RESPUESTA_VALIDA,
-                    texto_paciente="Gracias por su tiempo, que esté muy bien.",
-                    pregunta=None,
+                return _llm_turn(
+                    LLMTurnOutput(
+                        categoria=ResponseCategory.RESPUESTA_VALIDA,
+                        texto_paciente="Gracias por su tiempo, que esté muy bien.",
+                        pregunta=None,
+                    )
                 )
-            return LLMTurnOutput(
-                categoria=ResponseCategory.RESPUESTA_VALIDA,
-                texto_paciente="Entendido.",
-                pregunta="¿Ha tenido fiebre?",
+            return _llm_turn(
+                LLMTurnOutput(
+                    categoria=ResponseCategory.RESPUESTA_VALIDA,
+                    texto_paciente="Entendido.",
+                    pregunta="¿Ha tenido fiebre?",
+                )
             )
 
     settings = Settings(max_turns_per_call=3)
@@ -194,10 +211,12 @@ def test_orchestrator_appends_farewell_when_max_turns_reached_without_closure() 
 
     class AlwaysQuestionLLM:
         def generate_turn(self, **kwargs):
-            return LLMTurnOutput(
-                categoria=ResponseCategory.RESPUESTA_VALIDA,
-                texto_paciente="Entendido.",
-                pregunta="¿Ha tenido fiebre?",
+            return _llm_turn(
+                LLMTurnOutput(
+                    categoria=ResponseCategory.RESPUESTA_VALIDA,
+                    texto_paciente="Entendido.",
+                    pregunta="¿Ha tenido fiebre?",
+                )
             )
 
     settings = Settings(max_turns_per_call=2)
@@ -225,12 +244,14 @@ def test_orchestrator_closes_without_question_when_protocol_complete() -> None:
 
     class LastQuestionLLM:
         def generate_turn(self, **kwargs):
-            return LLMTurnOutput(
-                categoria=ResponseCategory.RESPUESTA_VALIDA,
-                texto_paciente="De acuerdo, gracias por compartir esta información.",
-                pregunta="¿Ha tenido dificultad para respirar?",
-                sintomas={"dificultad_respiratoria": "no"},
-                foco_sintoma="dificultad_respiratoria",
+            return _llm_turn(
+                LLMTurnOutput(
+                    categoria=ResponseCategory.RESPUESTA_VALIDA,
+                    texto_paciente="De acuerdo, gracias por compartir esta información.",
+                    pregunta="¿Ha tenido dificultad para respirar?",
+                    sintomas={"dificultad_respiratoria": "no"},
+                    foco_sintoma="dificultad_respiratoria",
+                )
             )
 
     settings = Settings(max_turns_per_call=10)
@@ -357,14 +378,16 @@ def test_orchestrator_procedure_mismatch_notice() -> None:
 def test_orchestrator_keeps_focal_symptom_on_ambiguous_response() -> None:
     class AmbiguousLLM:
         def generate_turn(self, **kwargs):
-            return LLMTurnOutput(
-                categoria=ResponseCategory.NO_ENTIENDE,
-                foco_sintoma="fiebre",
-                evidencia_suficiente=False,
-                sintomas={"fiebre": 37.0},
-                texto_paciente="Permítame preguntarle de otra forma.",
-                pregunta="¿Ha tenido fiebre? Responda sí o no.",
-                fuentes=[],
+            return _llm_turn(
+                LLMTurnOutput(
+                    categoria=ResponseCategory.NO_ENTIENDE,
+                    foco_sintoma="fiebre",
+                    evidencia_suficiente=False,
+                    sintomas={"fiebre": 37.0},
+                    texto_paciente="Permítame preguntarle de otra forma.",
+                    pregunta="¿Ha tenido fiebre? Responda sí o no.",
+                    fuentes=[],
+                )
             )
 
     orchestrator = ConversationOrchestrator(

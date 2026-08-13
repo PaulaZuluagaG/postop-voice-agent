@@ -7,6 +7,7 @@ from agent.decision.clinical_summary import (
     format_sources_used_text,
     format_symptoms_reported_text,
     replace_clinical_summary_sources,
+    resolve_call_triage,
 )
 from core.models import CallSessionState, CallSummary, ProcedureScenario, SeverityLevel, TurnRecord
 
@@ -117,3 +118,48 @@ def test_replace_clinical_summary_sources_updates_tail() -> None:
     original = "Paciente Ana. Fuentes clínicas consultadas: src_a, src_b."
     updated = replace_clinical_summary_sources(original, "guia.pdf, otro.pdf")
     assert updated == "Paciente Ana. Fuentes clínicas consultadas: guia.pdf, otro.pdf."
+
+
+def test_resolve_call_triage_escalates_on_consolidated_wound_infection() -> None:
+    from knowledge.protocol.loader import load_protocol_for_procedure
+
+    protocol, _ = load_protocol_for_procedure("total-joint-replacement")
+    session = CallSessionState(
+        call_id=uuid4(),
+        procedure_id="total-joint-replacement",
+        procedure_scenario=ProcedureScenario.TOTAL_JOINT_REPLACEMENT,
+        postop_day=3,
+        protocol_symptoms=[symptom.model_dump() for symptom in protocol.symptoms],
+        protocol_thresholds=protocol.thresholds.model_dump(),
+        turns=[
+            TurnRecord(
+                turn_number=1,
+                patient_input="No tengo fiebre",
+                agent_response="¿Cómo está la herida?",
+                rag_query="fiebre",
+                symptoms={"fiebre": False, "dolor_intenso": 5},
+            ),
+            TurnRecord(
+                turn_number=2,
+                patient_input="La herida supura",
+                agent_response="Gracias.",
+                rag_query="herida",
+                symptoms={"infeccion_herida": "si"},
+                alert_triggered=False,
+            ),
+        ],
+        cumulative_score=10,
+        current_severity=SeverityLevel.YELLOW,
+        alert_triggered=False,
+    )
+
+    severity, alert, next_steps, follow_up = resolve_call_triage(
+        session,
+        closed_reason="max_turns_reached",
+    )
+
+    assert severity == SeverityLevel.RED
+    assert alert is True
+    assert follow_up is False
+    assert "evaluación presencial" in next_steps.lower()
+    assert "vigilancia" not in next_steps.lower()

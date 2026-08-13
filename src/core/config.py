@@ -1,4 +1,14 @@
-"""Single source of truth for environment configuration."""
+"""Single source of truth for application configuration.
+
+Architecture
+------------
+* ``Settings`` (this module) defines every option, its type, validation, and default.
+* ``.env.example`` is generated from ``Settings`` (``uv run postop-config-example``).
+  Copy it to ``.env`` and fill in API keys — that is the usual onboarding flow.
+* ``.env`` is your local file (gitignored): secrets plus any overrides you need.
+
+Runtime code should always use ``get_settings()``, never read ``os.environ`` directly.
+"""
 
 from functools import lru_cache
 from pathlib import Path
@@ -78,6 +88,13 @@ class Settings(BaseSettings):
     kokoro_speed: float = 1.0
     voice_sample_rate: int = 24000
     voice_pipeline_idle_timeout_secs: int = 300
+    voice_warmup_on_start: bool = True
+    voice_skip_opening_rag: bool = True
+    voice_opening_grace_max_seconds: float = 4.0
+    voice_connected_delay_seconds: float = 0.25
+
+    # Ingest / admin hot-reload
+    ingest_warmup_on_start: bool = True
 
     # Agent
     max_turns_per_call: int = 8
