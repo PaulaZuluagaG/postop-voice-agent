@@ -77,6 +77,14 @@ Al final imprime el tiempo total en minutos.
 | **Total** | Con snapshot en `bootstrap/qdrant/` | **~4–10 min** |
 | **Total** | Sin snapshot (1.ª vez, fallback ingest) | **~10–18 min** |
 
+Medición en Mac (arranque frío `docker compose down -v` + `./scripts/docker-eval-up.sh`):
+
+| Escenario | Tiempo |
+| --------- | ------ |
+| Con snapshot commiteado | **~1m 32s** |
+| Generar snapshot (ingesta local) | **~3.5 min** (106 PDFs → 3007 chunks) |
+| Ingesta en Docker (`--docker`) | puede tardar **1–3 h** en Mac (evitar) |
+
 Rebuilds posteriores suelen bajar a **3–5 min** gracias a caché de Docker BuildKit.
 
 ### Optimizaciones aplicadas
@@ -144,7 +152,19 @@ curl -sf http://localhost:8080 > /dev/null && echo " Frontend admin OK"
 
 ```bash
 chmod +x scripts/build-bootstrap.sh
-./scripts/build-bootstrap.sh
+./scripts/build-bootstrap.sh          # local (recomendado): uv + Qdrant en Docker
+./scripts/build-bootstrap.sh --docker # lento en Mac; solo para reproducir contenedor
+```
+
+La ingesta **en local** (`uv run postop-ingest`) suele tardar **10–20 min** en CPU.
+Dentro de Docker (`ingest-init`) puede parecer “colgada” (sin logs) y tardar **1–3 h** en Mac
+por CPU limitada y descarga de modelos. El script local muestra progreso `[N/107]` por PDF.
+
+Tras generar el snapshot, commitea `bootstrap/qdrant/` y prueba frío:
+
+```bash
+docker compose down -v
+./scripts/docker-eval-up.sh
 ```
 
 **Ingesta manual completa** (desarrollo; incluye protocolos Gemini):

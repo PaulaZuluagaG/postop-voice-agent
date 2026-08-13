@@ -52,30 +52,45 @@ class IngestPipeline:
         seen_hashes: set[str] = set(self._store.get_indexed_hashes())
         pdf_files = iter_pdf_files(textos_dir)
 
-        for pdf_path in pdf_files:
+        pdf_list = list(pdf_files)
+        total_pdfs = len(pdf_list)
+        logger.info("Starting ingest of %d PDF(s) from %s", total_pdfs, textos_dir)
+
+        for index, pdf_path in enumerate(pdf_list, start=1):
+            logger.info("[%d/%d] Processing %s", index, total_pdfs, pdf_path.name)
             try:
                 document = parse_pdf(pdf_path, self._settings)
             except InsufficientTextError:
                 report.skipped_no_text.append(str(pdf_path))
-                logger.info("Skipped insufficient text: %s", pdf_path.name)
+                logger.info(
+                    "[%d/%d] Skipped insufficient text: %s", index, total_pdfs, pdf_path.name
+                )
                 continue
             except Exception as exc:  # noqa: BLE001
                 report.errors.append(f"{pdf_path.name}: {exc}")
-                logger.exception("Failed to parse %s", pdf_path)
+                logger.exception("[%d/%d] Failed to parse %s", index, total_pdfs, pdf_path)
                 continue
 
             if document.content_hash in seen_hashes:
                 report.skipped_duplicates.append(str(pdf_path))
-                logger.info("Skipped duplicate: %s", pdf_path.name)
+                logger.info("[%d/%d] Skipped duplicate: %s", index, total_pdfs, pdf_path.name)
                 continue
 
             try:
-                self._index_document(document)
+                chunk_count = self._index_document(document)
                 seen_hashes.add(document.content_hash)
                 report.indexed_documents += 1
+                logger.info(
+                    "[%d/%d] Indexed %s (%d chunks, %d docs done)",
+                    index,
+                    total_pdfs,
+                    pdf_path.name,
+                    chunk_count,
+                    report.indexed_documents,
+                )
             except Exception as exc:  # noqa: BLE001
                 report.errors.append(f"{pdf_path.name}: {exc}")
-                logger.exception("Failed to index %s", pdf_path)
+                logger.exception("[%d/%d] Failed to index %s", index, total_pdfs, pdf_path)
 
         report.total_chunks = sum(source.chunk_count for source in self._store.list_sources())
         has_indexed_data = report.indexed_documents > 0 or self._store.list_indexed_procedure_ids()
@@ -160,7 +175,7 @@ class IngestPipeline:
     def remove_document(self, source_id: str) -> None:
         self._store.delete_document_chunks(source_id)
 
-    def _index_document(self, document: ParsedDocument) -> None:
+    def _index_document(self, document: ParsedDocument) -> int:
         chunks = self._chunker.chunk_document(document)
         if not chunks:
             raise ValueError(f"No chunks produced for {document.file_name}")
@@ -168,3 +183,4 @@ class IngestPipeline:
         vectors = self._embedder.embed_chunks(chunks)
         self._store.delete_document_chunks(document.source_id)
         self._store.upsert_chunks(chunks, vectors, content_hash=document.content_hash)
+        return len(chunks)
