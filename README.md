@@ -13,6 +13,60 @@ y decide si escalar a personal humano.
 
 ---
 
+## LLMs y herramientas de voz utilizadas
+
+Esta solución declara explícitamente **dos modelos de lenguaje (LLM)** y el **stack de voz**
+con el que se construyó el agente en tiempo real.
+
+### Modelos de lenguaje (LLM)
+
+| # | Modelo | Proveedor / API | Rol en la solución | Variable `.env` |
+| - | ------ | --------------- | ------------------ | --------------- |
+| **1** | **Meta Llama 3.3 70B Versatile** | [Groq Cloud](https://console.groq.com/) | Conversación multi-turno con el paciente: extrae síntomas, genera JSON estructurado por turno y texto hablable (streaming). | `GROQ_MODEL=llama-3.3-70b-versatile` |
+| **2** | **Google Gemini 3.6 Flash** | [Google AI Studio](https://aistudio.google.com/) | Tareas **batch/admin** (no en la llamada de voz): generación de protocolos JSON por procedimiento, validación de PDFs al subir documentos y sugerencia de categoría cuando el admin elige "Otro". | `GEMINI_MODEL=gemini-3.6-flash` |
+
+**Por qué dos LLMs:** Groq ofrece baja latencia para voz en tiempo real; Gemini maneja mejor
+contextos largos y JSON estructurado en tareas asíncronas sin competir con la cuota de las llamadas.
+
+**Dónde corre cada uno en código:**
+
+| LLM | Módulo principal |
+| --- | ---------------- |
+| Groq (Llama 3.3 70B) | `src/agent/llm/groq_client.py`, `src/agent/llm/streaming.py` → `PostOpLLMService` (Pipecat) |
+| Gemini 3.6 Flash | `src/knowledge/protocol/gemini_client.py`, `src/agent/llm/document_validator.py`, `src/api/services/procedure_classifier.py` |
+
+### Herramientas de voz (pipeline en tiempo real)
+
+La capa de voz está orquestada con **[Pipecat](https://github.com/pipecat-ai/pipecat)**. Flujo
+de una llamada WebRTC:
+
+```
+Micrófono (navegador) → WebRTC → Deepgram STT → Groq LLM → Kokoro TTS → WebRTC → altavoz
+```
+
+| Componente | Herramienta / modelo | Función | Configuración (`.env`) |
+| ---------- | -------------------- | ------- | ---------------------- |
+| **Orquestación de voz** | Pipecat | Pipeline STT → LLM → TTS, agregación de turnos, cancelación por interrupción | `src/voice/pipeline.py`, `src/voice/browser.py` |
+| **Transporte audio** | Pipecat **Small WebRTC** | Llamada de voz en el navegador (sin telefonía PSTN) | `src/voice/web_server.py` (:7860) |
+| **Speech-to-Text (STT)** | **Deepgram Nova-2** (`es`) | Transcripción streaming del paciente | `DEEPGRAM_MODEL=nova-2`, `DEEPGRAM_LANGUAGE=es` |
+| **Text-to-Speech (TTS)** | **Kokoro 82M** (local, CPU) | Voz de María; modelo `hexgrad/Kokoro-82M`, voz `ef_dora` | `KOKORO_VOICE=ef_dora`, `KOKORO_LANG_CODE=e` |
+| **Detección de voz (VAD)** | **Silero VAD** (Pipecat) | Fin de turno del paciente e interrupciones del agente | Integrado en `SileroVADAnalyzer` |
+
+**Backend de voz:** FastAPI + Pipecat en `backend-voice` (`postop-voice-web`, puerto **7860**).
+**Frontend de llamada:** Next.js en `apps/voice-ui/` (puerto **3000**).
+
+### RAG y conocimiento (no son voz, pero alimentan al LLM)
+
+| Componente | Herramienta | Función |
+| ---------- | ----------- | ------- |
+| Embeddings | IBM Granite `granite-embedding-97m-multilingual-r2` (384d) | Vectorizar chunks clínicos |
+| Vector store | Qdrant v1.19 | Búsqueda semántica por procedimiento |
+| Corpus | 107 PDFs en `data/textos/` | Evidencia clínica citada en cada turno |
+
+Detalle ampliado de modelos, prompts y configuración: [`docs/proyecto/README.md`](docs/proyecto/README.md).
+
+---
+
 ## Levantamiento en ≤15 minutos (compuerta G2)
 
 Sigue **solo este README**, en orden. El cronómetro mide desde `git clone` hasta que las URLs
@@ -211,19 +265,6 @@ docker compose down -v
 | API admin (OpenAPI) | http://localhost:8000/docs | Header `Authorization: Bearer <ADMIN_TOKEN>` |
 | Backend voz (readiness) | http://localhost:7860/api/readiness | Ninguna |
 | Qdrant REST | http://localhost:6333 | Ninguna (solo local) |
-
----
-
-## Modelos LLM declarados
-
-| Rol | Modelo | Proveedor | Variable |
-| --- | ------ | --------- | -------- |
-| Conversación en tiempo real | **Llama 3.3 70B Versatile** | Groq | `GROQ_MODEL=llama-3.3-70b-versatile` |
-| Protocolos JSON + validación PDF | **Gemini 3.6 Flash** | Google AI | `GEMINI_MODEL=gemini-3.6-flash` |
-
-**No-LLM (stack de voz/RAG):** IBM Granite embeddings · Deepgram Nova-2 STT · Kokoro TTS · Qdrant v1.19.
-
-Detalle de la elección: [`docs/proyecto/README.md`](docs/proyecto/README.md#3-declaración-de-modelos-llm).
 
 ---
 
