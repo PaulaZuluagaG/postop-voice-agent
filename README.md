@@ -365,3 +365,5 @@ Los PDFs de `data/textos/` son obra de sus autores; se incluyen solo como materi
 del reto. Los datos clínicos son **sintéticos** y no tienen validez clínica real.
 
 **Contacto:** [communications@sourcemeridian.com](mailto:communications@sourcemeridian.com)
+
+**Video (entregable 04 — argumentación de la solución y demostración en funcionamiento):** https://drive.google.com/file/d/1llsF-i63V-bBC8oJjVONnwMYzFCX5CIe/view?usp=sharing

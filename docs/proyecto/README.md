@@ -12,6 +12,7 @@ modelos de IA elegidos, configuraciones, protocolos JSON, prompts (activos y arc
 | Métricas operativas | [`docs/metrics/README.md`](../metrics/README.md) |
 | Prompts obsoletos (archivo histórico) | [`docs/proyecto/prompts-archivo.md`](./prompts-archivo.md) |
 | Análisis exploratorio de datos | [`docs/analisis-exploratorio-datos/`](../analisis-exploratorio-datos/hallazgos.md) |
+| Video (entregable 04) | [Argumentación de la solución y demostración en funcionamiento](https://drive.google.com/file/d/1llsF-i63V-bBC8oJjVONnwMYzFCX5CIe/view?usp=sharing) |
 
 ---
 
@@ -736,3 +737,4 @@ postop-voice-agent/
 - [ ] Docker: `./scripts/docker-eval-up.sh` ≤15 min
 - [ ] Métricas documentadas en `docs/metrics/README.md`
 - [ ] Prompts documentados: activos en §6.1 + obsoletos en [`prompts-archivo.md`](./prompts-archivo.md)
+- [x] Video (entregable 04): [argumentación de la solución y demostración en funcionamiento](https://drive.google.com/file/d/1llsF-i63V-bBC8oJjVONnwMYzFCX5CIe/view?usp=sharing)
