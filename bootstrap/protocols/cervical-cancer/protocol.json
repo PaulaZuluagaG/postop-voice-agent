@@ -1,0 +1,167 @@
+{
+  "procedure": "cervical-cancer",
+  "version": "1.0",
+  "generated_at": "2026-08-12T02:02:36.554572Z",
+  "source_ids": [
+    "src_3567032085bcbf0b",
+    "src_97fc5573dd4407cc",
+    "src_9e3ab31ed4d8733b",
+    "src_d6d5fc5dc5a4f531",
+    "src_dbe27ab5ecc04fed",
+    "src_e9471c40a03e9da9",
+    "src_ef65cfd4d6d4f2c0"
+  ],
+  "symptoms": [
+    {
+      "id": "retencion_urinaria",
+      "question": "¿Ha experimentado dificultad para orinar o imposibilidad para vaciar la vejiga (retención urinaria)?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 8,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_3567032085bcbf0b"
+      ]
+    },
+    {
+      "id": "distension_abdominal",
+      "question": "¿Siente distensión o hinchazón abdominal excesiva?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 5,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_3567032085bcbf0b"
+      ]
+    },
+    {
+      "id": "infeccion_incision",
+      "question": "¿Presenta la herida quirúrgica signos de infección como enrojecimiento, secreción o calor excesivo?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 10,
+          "label": "rojo"
+        }
+      ],
+      "fuentes": [
+        "src_3567032085bcbf0b"
+      ]
+    },
+    {
+      "id": "dolor_pelvico",
+      "question": "En una escala del 0 al 10, ¿qué nivel de dolor pélvico presenta actualmente?",
+      "type": "numeric",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 3.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 4.0,
+          "max": 7.0,
+          "points": 4,
+          "label": "amarillo"
+        },
+        {
+          "min": 8.0,
+          "max": 10.0,
+          "points": 10,
+          "label": "rojo"
+        }
+      ],
+      "fuentes": [
+        "src_9e3ab31ed4d8733b"
+      ]
+    },
+    {
+      "id": "ansiedad",
+      "question": "¿Ha presentado episodios significativos de ansiedad o nerviosismo descontrolado?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 4,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_3567032085bcbf0b"
+      ]
+    },
+    {
+      "id": "depresion",
+      "question": "¿Ha sentido un estado de ánimo bajo, tristeza constante o desánimo marcado?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 4,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_3567032085bcbf0b"
+      ]
+    }
+  ],
+  "thresholds": {
+    "verde": 0,
+    "amarillo": 8,
+    "rojo": 15
+  },
+  "alert_signs": [
+    "Infección en la incisión quirúrgica",
+    "Retención urinaria postoperatoria",
+    "Distensión abdominal incapacitante",
+    "Dolores pélvicos severos o progresivos",
+    "Falla renal obstructiva"
+  ],
+  "risk_factors": []
+}

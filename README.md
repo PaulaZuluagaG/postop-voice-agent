@@ -12,7 +12,7 @@ va a evaluar.
 
 - **Cómo se evalúa tu entrega** → `[docs/rubrica-evaluacion.md](docs/rubrica-evaluacion.md)`
 - **Stack abierto y modelos permitidos** → `[docs/stack-tecnico.md](docs/stack-tecnico.md)`
-- **Los datos** → `[dataset/](dataset/)`
+- **Los datos** → `[data/](data/)`
 
 ---
 
@@ -82,9 +82,9 @@ descripciones ambiguas.
 
 ---
 
-## Los datos: `dataset/`
+## Los datos: `data/`
 
-Todos los datos del reto están en la carpeta `[dataset/](dataset/)` de este repositorio.
+Todos los datos del reto están en la carpeta `[data/](data/)` de este repositorio.
 No hay que conectarse a nada externo para obtenerlos.
 
 Son **datos sintéticos**. Ningún paciente, nombre, cédula, dirección o EPS corresponde a
@@ -131,7 +131,7 @@ conversación en sus dos capas.
 `verde`, 25 `amarillo` y 12 `rojo`.
 - `comorbilidades` y `adaptation_fields` son **listas JSON dentro de una celda de texto**.
 - Los cuatro `.xlsx` tienen **una sola hoja, llamada `result`**.
-- En `dataset/textos/`, hay **12 PDFs con señal de escaneo** (≥1 página con imagen y poco texto nativo), pero solo **1** queda bajo el mínimo de ingestión sin OCR; el resto suele ser portada escaneada.
+- En `data/textos/`, hay **12 PDFs con señal de escaneo** (≥1 página con imagen y poco texto nativo), pero solo **1** queda bajo el mínimo de ingestión sin OCR; el resto suele ser portada escaneada.
 - El material entregado **no es todo el material de evaluación**. Habrá conocimiento
 clínico que tu agente no habrá visto antes.
 
@@ -174,12 +174,48 @@ construir.
 
 ---
 
+## Estructura del proyecto
+
+```
+postop-voice-agent/
+├── src/                    # Paquetes Python instalables
+│   ├── core/               # Configuración, modelos de dominio, registro de pacientes
+│   ├── knowledge/          # RAG: ingest, Qdrant, retrieval, protocolos clínicos
+│   ├── agent/              # Orquestador, scoring, LLM (Groq), memoria, trazabilidad
+│   ├── api/                # Consola admin (FastAPI)
+│   └── voice/              # Pipeline Pipecat: STT, TTS, WebRTC
+├── apps/
+│   ├── admin-ui/           # UI estática de la consola de conocimiento
+│   └── voice-ui/           # Frontend Next.js para llamadas de voz (María)
+├── data/                   # Corpus clínico (PDFs) y datasets de evaluación (.xlsx)
+├── bootstrap/              # Artefactos precalculados (protocolos + snapshot Qdrant)
+├── storage/                # Runtime: protocolos activos, logs (gitignored except .gitkeep)
+├── scripts/                # Utilidades de desarrollo (benchmarks, demos, ingest helpers)
+├── tests/                  # Suite pytest
+└── docs/                   # Documentación del reto
+```
+
+**Flujo en runtime:** micrófono o texto → Pipecat (`voice/`) → orquestador (`agent/`) →
+RAG + protocolo (`knowledge/`) → Groq → Kokoro TTS → respuesta de voz.
+
+**Comandos principales:**
+
+| Comando | Descripción |
+| ------- | ----------- |
+| `uv run postop-voice` | Agente de voz en consola |
+| `uv run postop-voice-web` | Servidor WebRTC para el frontend |
+| `uv run postop-admin` | API + consola de conocimiento clínico |
+| `uv run postop-ingest` | Ingesta batch de PDFs a Qdrant |
+| `uv run postop-protocols` | Generación de protocolos clínicos |
+
+**Docker (evaluación G2):** ver [`docs/docker-guia.md`](docs/docker-guia.md) y `./scripts/docker-eval-up.sh`.
+
 ## Licencia y avisos
 
 El código y los datos sintéticos de este repositorio se distribuyen bajo licencia MIT
 (ver `[LICENSE](LICENSE)`).
 
-Los documentos PDF de `dataset/textos/` son obra de sus respectivos autores y editores,
+Los documentos PDF de `data/textos/` son obra de sus respectivos autores y editores,
 conservan sus propios derechos y se incluyen únicamente como material de referencia para
 el reto.
 

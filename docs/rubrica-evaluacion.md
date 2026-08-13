@@ -5,7 +5,7 @@ sobre qué se reparten los 100 puntos, qué debe reportar tu README y cómo se e
 evaluación.
 
 El punto de partida del reto está en el [README](../README.md); los datos, en
-[`dataset/`](../dataset/).
+[`data/`](../data/).
 
 ---
 

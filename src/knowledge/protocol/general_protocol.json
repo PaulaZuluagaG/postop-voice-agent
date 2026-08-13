@@ -1,0 +1,97 @@
+{
+    "procedure": "desconocido",
+    "version": "1.0",
+    "generated_at": "2026-08-10T00:00:00Z",
+    "source_ids": [],
+    "symptoms": [
+        {
+            "id": "dolor",
+            "question": "Del 0 al 10, ¿cómo califica su dolor?",
+            "type": "numeric",
+            "levels": [
+                {"min": 0, "max": 3, "points": 0, "label": "verde"},
+                {"min": 4, "max": 7, "points": 4, "label": "amarillo"},
+                {"min": 8, "max": 10, "points": 10, "label": "rojo"}
+            ],
+            "fuentes": []
+        },
+        {
+            "id": "fiebre",
+            "question": "¿Ha tenido fiebre? ¿Cuál es su temperatura?",
+            "type": "numeric",
+            "levels": [
+                {"min": 0, "max": 37.4, "points": 0, "label": "verde"},
+                {"min": 37.5, "max": 38.4, "points": 4, "label": "amarillo"},
+                {"min": 38.5, "max": 42, "points": 10, "label": "rojo"}
+            ],
+            "fuentes": []
+        },
+        {
+            "id": "neurologico",
+            "question": "¿Se siente confundido, desorientado o con somnolencia excesiva?",
+            "type": "qualitative",
+            "levels": [
+                {"min": 0, "max": 0, "points": 0, "label": "verde"},
+                {"min": 1, "max": 1, "points": 4, "label": "amarillo"},
+                {"min": 2, "max": 2, "points": 10, "label": "rojo"}
+            ],
+            "fuentes": []
+        },
+        {
+            "id": "herida",
+            "question": "¿Cómo se encuentra su herida quirúrgica? ¿Tiene enrojecimiento, calor o secreción?",
+            "type": "binary",
+            "levels": [
+                {"min": 0, "max": 0, "points": 0, "label": "verde"},
+                {"min": 1, "max": 1, "points": 10, "label": "rojo"}
+            ],
+            "fuentes": []
+        },
+        {
+            "id": "respiracion",
+            "question": "¿Tiene dificultad para respirar o falta de aire?",
+            "type": "binary",
+            "levels": [
+                {"min": 0, "max": 0, "points": 0, "label": "verde"},
+                {"min": 1, "max": 1, "points": 10, "label": "rojo"}
+            ],
+            "fuentes": []
+        },
+        {
+            "id": "digestivo",
+            "question": "¿Ha podido retener líquidos o alimentos sin vomitar?",
+            "type": "binary",
+            "levels": [
+                {"min": 0, "max": 0, "points": 0, "label": "verde"},
+                {"min": 1, "max": 1, "points": 4, "label": "amarillo"}
+            ],
+            "fuentes": []
+        },
+        {
+            "id": "movilidad",
+            "question": "¿Puede movilizarse sin ayuda o se siente muy débil?",
+            "type": "qualitative",
+            "levels": [
+                {"min": 0, "max": 0, "points": 0, "label": "verde"},
+                {"min": 1, "max": 1, "points": 4, "label": "amarillo"},
+                {"min": 2, "max": 2, "points": 10, "label": "rojo"}
+            ],
+            "fuentes": []
+        }
+    ],
+    "thresholds": {
+        "verde": 0,
+        "amarillo": 8,
+        "rojo": 15
+    },
+    "alert_signs": [
+        "dolor intenso (≥8/10)",
+        "fiebre alta (>38.5°C)",
+        "sangrado",
+        "dificultad para respirar",
+        "desorientación severa o somnolencia excesiva",
+        "vómitos persistentes",
+        "enrojecimiento, calor o secreción en la herida",
+        "falta de movilidad o debilidad extrema"
+    ]
+}

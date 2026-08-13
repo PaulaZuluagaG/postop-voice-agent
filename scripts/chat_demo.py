@@ -12,14 +12,15 @@ import argparse
 import sys
 
 from agent.orchestrator import ConversationOrchestrator
+from core.config import get_settings
 from core.exceptions import ConfigurationError, PostOpError, SessionError
 from core.models import CallSessionState, ProcedureScenario, TurnRecord
-from core.scenarios import SCENARIO_OPTIONS
-from scripts.patient_registration import (
+from core.registration import (
     PatientRegistration,
     prompt_patient_registration,
     registration_from_args,
 )
+from core.scenarios import SCENARIO_OPTIONS
 
 SCENARIO_CHOICES = {scenario.value: scenario for _, _, scenario in SCENARIO_OPTIONS}
 SCENARIO_CHOICES["otro"] = ProcedureScenario.OTHER
@@ -96,7 +97,7 @@ def _chat_loop(
     print(f"Tipo de cirugía: {registration.procedure_label}")
     print(f"Día postop: {session.postop_day}")
     print(f"Fuentes usadas: {len(summary.sources_used)}")
-    print(f"Log: logs/calls/{summary.call_id}/summary/events.json")
+    print(f"Log: {get_settings().calls_log_dir / summary.call_id / 'summary' / 'events.json'}")
     return 0
 
 

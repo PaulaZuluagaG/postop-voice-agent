@@ -12,6 +12,7 @@ from agent.messages import (
     closure_message_for_severity,
 )
 from agent.orchestrator import ConversationOrchestrator
+from agent.traceability.calls import CallLogService
 from core.config import Settings
 from core.models import LLMTurnOutput, ProcedureScenario, ResponseCategory, SeverityLevel
 from knowledge.protocol.loader import load_protocol_for_procedure
@@ -104,11 +105,50 @@ def test_orchestrator_red_closure_keeps_alert_message() -> None:
     turn = orchestrator.process_turn(session.call_id, "39 grados")
 
     assert session.alert_triggered is True
+    assert session.call_closed is True
+    assert session.call_close_logged is True
     assert ALERT_MESSAGE in turn.agent_response
 
     summary = orchestrator._build_summary(session, "alert_triggered")
     assert summary.physician_escalated is True
     assert summary.follow_up_recommended is False
+
+
+def test_orchestrator_alert_persists_call_close_event(tmp_path) -> None:
+    from agent.traceability.logger import CallTraceLogger
+
+    class RedScoreLLM(FakeLLM):
+        def generate_turn(self, **kwargs):
+            return LLMTurnOutput(
+                categoria=ResponseCategory.RESPUESTA_VALIDA,
+                foco_sintoma="fiebre",
+                evidencia_suficiente=True,
+                sintomas={"fiebre": 39.0},
+                texto_paciente="Entiendo.",
+                pregunta=None,
+                fuentes=["src_test"],
+            )
+
+    settings = Settings(calls_log_dir=tmp_path / "calls")
+    trace = CallTraceLogger(settings)
+    orchestrator = ConversationOrchestrator(
+        settings=settings,
+        retriever=FakeRetriever(),
+        llm=RedScoreLLM(),
+        trace_logger=trace,
+        reference_date=date(2026, 8, 8),
+    )
+    session = orchestrator.start_call(
+        procedure_scenario=ProcedureScenario.APPENDICITIS,
+        surgery_date="2026-08-05",
+        call_id=uuid4(),
+    )
+
+    orchestrator.process_turn(session.call_id, "39 grados")
+
+    events = trace.read_call_log(session.call_id)
+    assert any(event.get("event_type") == "call_close" for event in events)
+    assert CallLogService(settings).get_call_summary(str(session.call_id)) is not None
 
 
 def test_protocol_thresholds_define_yellow_band_without_overlap() -> None:

@@ -1,0 +1,208 @@
+{
+  "procedure": "colorectal-cancer",
+  "version": "1.0",
+  "generated_at": "2026-08-12T02:03:36.671626Z",
+  "source_ids": [
+    "src_36987cc1f902f9cd",
+    "src_3884fb964a29eeae",
+    "src_3f8a2a0813621f8e",
+    "src_bfd336487cfbf38e",
+    "src_c121efc2bc54932e",
+    "src_d7f98a9d69fe5404",
+    "src_f3b3daa28520442a"
+  ],
+  "symptoms": [
+    {
+      "id": "dolor_abdominal",
+      "question": "¿Cuál es su nivel de dolor en una escala del 0 al 10?",
+      "type": "numeric",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 3.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 4.0,
+          "max": 7.0,
+          "points": 4,
+          "label": "amarillo"
+        },
+        {
+          "min": 8.0,
+          "max": 10.0,
+          "points": 10,
+          "label": "rojo"
+        }
+      ],
+      "fuentes": [
+        "src_c121efc2bc54932e"
+      ]
+    },
+    {
+      "id": "fiebre",
+      "question": "¿Ha presentado fiebre o elevación de la temperatura corporal?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 8,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_3884fb964a29eeae"
+      ]
+    },
+    {
+      "id": "ileo_paralitico",
+      "question": "¿Presenta imposibilidad para expulsar gases, ausencia de deposiciones o náuseas/vómitos persistentes?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 10,
+          "label": "rojo"
+        }
+      ],
+      "fuentes": [
+        "src_bfd336487cfbf38e"
+      ]
+    },
+    {
+      "id": "infeccion_sitio_quirurgico",
+      "question": "¿Observa signos de infección en la herida como enrojecimiento, calor, hinchazón o salida de pus?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 8,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_bfd336487cfbf38e"
+      ]
+    },
+    {
+      "id": "sangrado_postoperatorio",
+      "question": "¿Ha notado sangrado activo en la herida quirúrgica o presencia de sangre en las deposiciones?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 10,
+          "label": "rojo"
+        }
+      ],
+      "fuentes": [
+        "src_bfd336487cfbf38e"
+      ]
+    },
+    {
+      "id": "infeccion_urinaria",
+      "question": "¿Siente ardor o dolor al orinar, o la necesidad de orinar con mucha frecuencia?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 4,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_bfd336487cfbf38e",
+        "src_3884fb964a29eeae"
+      ]
+    },
+    {
+      "id": "sintomas_respiratorios",
+      "question": "¿Presenta tos persistente con flema, dificultad para respirar o dolor al inspirar?",
+      "type": "binary",
+      "levels": [
+        {
+          "min": 0.0,
+          "max": 0.0,
+          "points": 0,
+          "label": "verde"
+        },
+        {
+          "min": 1.0,
+          "max": 1.0,
+          "points": 8,
+          "label": "amarillo"
+        }
+      ],
+      "fuentes": [
+        "src_bfd336487cfbf38e",
+        "src_3884fb964a29eeae",
+        "src_c121efc2bc54932e"
+      ]
+    }
+  ],
+  "thresholds": {
+    "verde": 0,
+    "amarillo": 8,
+    "rojo": 15
+  },
+  "alert_signs": [
+    "Sangrado postoperatorio abundante (>500 ml)",
+    "Filtración de la anastomosis intestinal",
+    "Íleo paralítico persistente",
+    "Infección del sitio quirúrgico u orina",
+    "Colección o absceso intraabdominal",
+    "Isquemia intestinal o falla ventilatoria"
+  ],
+  "risk_factors": [
+    {
+      "id": "diabetes_tipo_2",
+      "label": "Diabetes mellitus",
+      "fuentes": [
+        "src_bfd336487cfbf38e"
+      ]
+    },
+    {
+      "id": "hipertension",
+      "label": "Hipertensión arterial",
+      "fuentes": [
+        "src_bfd336487cfbf38e"
+      ]
+    }
+  ]
+}

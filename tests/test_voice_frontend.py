@@ -1,7 +1,7 @@
 import pytest
 
+from core.registration import registration_from_frontend
 from core.scenarios import list_procedure_options_from_disk
-from scripts.patient_registration import registration_from_frontend
 
 
 def test_registration_from_frontend_parses_comorbidities() -> None:

@@ -1,1 +1,0 @@
-"""Clinical knowledge RAG pipeline."""
