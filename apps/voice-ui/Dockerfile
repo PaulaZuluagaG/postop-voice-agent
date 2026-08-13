@@ -6,7 +6,8 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 FROM node:20-alpine AS builder
 
@@ -40,7 +41,7 @@ USER nextjs
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=15s --timeout=5s --retries=5 \
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
     CMD curl -f http://127.0.0.1:3000/ || exit 1
 
 CMD ["node", "server.js"]

@@ -1,7 +1,5 @@
 #!/bin/sh
 set -e
 
-PROTOCOL_STORAGE="${PROTOCOL_DIR:-/app/storage/protocols}"
-mkdir -p "$PROTOCOL_STORAGE"
-
+/app/scripts/seed_runtime_data.sh
 exec "$@"

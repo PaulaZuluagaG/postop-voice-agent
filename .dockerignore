@@ -22,9 +22,8 @@ htmlcov
 **/out
 
 # Runtime data (mounted as volumes)
-logs/
 storage/logs/
-dataset/textos/**/*.pdf
+storage/protocols/
 data/textos/**/*.pdf
 
 # Secrets & local env
@@ -36,7 +35,4 @@ data/textos/**/*.pdf
 *.xlsx
 notebooks/.ipynb_checkpoints
 
-# Duplicate / legacy trees
-voice-ui/
-scripts/maria-clinical-agent/
-admin/
+# Qdrant snapshot is committed under bootstrap/qdrant/ when present

@@ -1,4 +1,18 @@
+# Levantamiento evaluable en ≤15 min: ver scripts/docker-eval-up.sh
 name: postop-voice-agent
+
+x-backend-build: &backend-build
+  context: .
+  dockerfile: Dockerfile
+  target: runtime
+
+x-backend-image: &backend-image postop-backend:local
+
+# Acelera ingest-init dentro del contenedor (sin afectar desarrollo local).
+x-ingest-tuning: &ingest-tuning
+  PROTOCOL_GENERATION_DELAY_SECONDS: "0"
+  OCR_ENABLED: "false"
+  EMBEDDING_BATCH_SIZE: "64"
 
 services:
   qdrant-db:
@@ -14,24 +28,23 @@ services:
       - postop-net
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333'"]
-      interval: 5s
-      timeout: 3s
-      retries: 12
-      start_period: 10s
+      interval: 3s
+      timeout: 2s
+      retries: 8
+      start_period: 5s
 
   backend-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: runtime
+    build: *backend-build
+    image: *backend-image
     container_name: postop-backend-api
     restart: unless-stopped
     env_file:
       - .env
     environment:
+      <<: *ingest-tuning
       QDRANT_HOST: qdrant-db
       QDRANT_PORT: 6333
-      TEXTOS_DIR: /app/dataset/textos
+      TEXTOS_DIR: /app/data/textos
       PROTOCOL_DIR: /app/storage/protocols
       CALLS_LOG_DIR: /app/storage/logs/calls
       API_HOST: 0.0.0.0
@@ -40,7 +53,7 @@ services:
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
-      - ./dataset/textos:/app/dataset/textos
+      - ./data/textos:/app/data/textos
       - ./storage/protocols:/app/storage/protocols
       - ./storage/logs:/app/storage/logs
       - hf_cache:/app/.cache/huggingface
@@ -51,24 +64,23 @@ services:
       - postop-net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/openapi.json"]
-      interval: 15s
-      timeout: 5s
-      retries: 8
-      start_period: 45s
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
 
   backend-voice:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: runtime
+    build: *backend-build
+    image: *backend-image
     container_name: postop-backend-voice
     restart: unless-stopped
     env_file:
       - .env
     environment:
+      <<: *ingest-tuning
       QDRANT_HOST: qdrant-db
       QDRANT_PORT: 6333
-      TEXTOS_DIR: /app/dataset/textos
+      TEXTOS_DIR: /app/data/textos
       PROTOCOL_DIR: /app/storage/protocols
       CALLS_LOG_DIR: /app/storage/logs/calls
       VOICE_WEB_HOST: 0.0.0.0
@@ -78,23 +90,21 @@ services:
     ports:
       - "${VOICE_WEB_PORT:-7860}:7860"
     volumes:
-      - ./dataset/textos:/app/dataset/textos
+      - ./data/textos:/app/data/textos
       - ./storage/protocols:/app/storage/protocols
       - ./storage/logs:/app/storage/logs
       - hf_cache:/app/.cache/huggingface
     depends_on:
       qdrant-db:
         condition: service_healthy
-      backend-api:
-        condition: service_healthy
     networks:
       - postop-net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:7860/status"]
-      interval: 15s
-      timeout: 5s
-      retries: 8
-      start_period: 60s
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
 
   frontend-paciente:
     build:
@@ -102,6 +112,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_VOICE_API_URL: ${NEXT_PUBLIC_VOICE_API_URL:-http://localhost:7860}
+    image: postop-frontend-paciente:local
     container_name: postop-frontend-paciente
     restart: unless-stopped
     environment:
@@ -119,6 +130,7 @@ services:
     build:
       context: ./apps/admin-ui
       dockerfile: Dockerfile
+    image: postop-frontend-admin:local
     container_name: postop-frontend-admin
     restart: unless-stopped
     ports:
@@ -130,10 +142,12 @@ services:
       - postop-net
 
   jupyter-notebook:
+    profiles: ["analysis"]
     build:
       context: .
       dockerfile: Dockerfile
       target: jupyter
+    image: postop-jupyter:local
     container_name: postop-jupyter
     restart: unless-stopped
     env_file:
@@ -141,12 +155,11 @@ services:
     environment:
       QDRANT_HOST: qdrant-db
       QDRANT_PORT: 6333
-      TEXTOS_DIR: /app/dataset/textos
+      TEXTOS_DIR: /app/data/textos
     ports:
       - "${JUPYTER_PORT:-8888}:8888"
     volumes:
       - ./notebooks:/app/notebooks
-      - ./dataset/textos:/app/dataset/textos
       - ./data:/app/data
       - hf_cache:/app/.cache/huggingface
     depends_on:
@@ -157,27 +170,24 @@ services:
 
   ingest-init:
     profiles: ["init"]
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: runtime
+    build: *backend-build
+    image: *backend-image
     container_name: postop-ingest-init
     env_file:
       - .env
     environment:
+      <<: *ingest-tuning
       QDRANT_HOST: qdrant-db
       QDRANT_PORT: 6333
-      TEXTOS_DIR: /app/dataset/textos
+      TEXTOS_DIR: /app/data/textos
       PROTOCOL_DIR: /app/storage/protocols
     command: ["postop-ingest", "--recreate"]
     volumes:
-      - ./dataset/textos:/app/dataset/textos
+      - ./data/textos:/app/data/textos
       - ./storage/protocols:/app/storage/protocols
       - hf_cache:/app/.cache/huggingface
     depends_on:
       qdrant-db:
-        condition: service_healthy
-      backend-api:
         condition: service_healthy
     networks:
       - postop-net

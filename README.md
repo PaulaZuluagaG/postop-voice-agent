@@ -188,7 +188,8 @@ postop-voice-agent/
 │   ├── admin-ui/           # UI estática de la consola de conocimiento
 │   └── voice-ui/           # Frontend Next.js para llamadas de voz (María)
 ├── data/                   # Corpus clínico (PDFs) y datasets de evaluación (.xlsx)
-├── storage/logs/           # Trazas de llamadas en runtime (gitignored)
+├── bootstrap/              # Artefactos precalculados (protocolos + snapshot Qdrant)
+├── storage/                # Runtime: protocolos activos, logs (gitignored except .gitkeep)
 ├── scripts/                # Utilidades de desarrollo (benchmarks, demos, ingest helpers)
 ├── tests/                  # Suite pytest
 └── docs/                   # Documentación del reto
@@ -206,6 +207,8 @@ RAG + protocolo (`knowledge/`) → Groq → Kokoro TTS → respuesta de voz.
 | `uv run postop-admin` | API + consola de conocimiento clínico |
 | `uv run postop-ingest` | Ingesta batch de PDFs a Qdrant |
 | `uv run postop-protocols` | Generación de protocolos clínicos |
+
+**Docker (evaluación G2):** ver [`docs/docker-guia.md`](docs/docker-guia.md) y `./scripts/docker-eval-up.sh`.
 
 ## Licencia y avisos
 

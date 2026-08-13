@@ -2,9 +2,10 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from core.paths import project_root, resolve_project_path
 
@@ -66,7 +67,7 @@ class Settings(BaseSettings):
     protocol_compact_max_symptoms: int = 6
     protocol_skip_existing: bool = True
     protocol_generation_delay_seconds: float = 15.0
-    protocol_dir: Path = project_root() / "src" / "knowledge" / "protocol"
+    protocol_dir: Path = project_root() / "storage" / "protocols"
 
     # Voz (Pipecat + Deepgram + Kokoro)
     deepgram_api_key: str = ""
@@ -95,7 +96,7 @@ class Settings(BaseSettings):
     # Voice web (Pipecat WebRTC + frontend María)
     voice_web_host: str = "0.0.0.0"
     voice_web_port: int = 7860
-    voice_web_cors_origins: list[str] = [
+    voice_web_cors_origins: Annotated[list[str], NoDecode] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
