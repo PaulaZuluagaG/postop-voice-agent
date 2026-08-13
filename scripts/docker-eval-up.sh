@@ -10,6 +10,7 @@ export COMPOSE_DOCKER_CLI_BUILD=1
 
 if [[ ! -f .env ]]; then
   echo "ERROR: falta .env — ejecute: cp .env.example .env y configure las API keys." >&2
+  echo "       Defaults en src/core/config.py; plantilla: uv run postop-config-example" >&2
   exit 1
 fi
 

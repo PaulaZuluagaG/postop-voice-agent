@@ -33,8 +33,8 @@ def get_call_log_service() -> CallLogService:
 def _gemini_error_detail(exc: Exception) -> str:
     if gemini_is_daily_quota_error(exc):
         return (
-            "Cuota diaria de Gemini agotada. Espera al reset diario o cambia GEMINI_MODEL "
-            "en .env antes de volver a clasificar documentos."
+            "Cuota diaria de Gemini agotada. Espera al reset diario o cambia gemini_model "
+            "en src/core/config.py / GEMINI_MODEL en .env antes de volver a clasificar documentos."
         )
     if isinstance(exc, ResourceExhausted):
         return "Gemini rechazó la solicitud por límite de tasa. Intenta de nuevo en un minuto."

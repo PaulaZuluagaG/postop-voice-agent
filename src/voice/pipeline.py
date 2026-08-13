@@ -19,6 +19,7 @@ from pipecat.transports.local.audio import LocalAudioTransport, LocalAudioTransp
 from agent.orchestrator import ConversationOrchestrator
 from core.config import Settings, get_settings
 from core.registration import PatientRegistration
+from knowledge.retrieval.retriever import ContextualRetriever
 from voice.processors.console_input import ConsoleTextInputProcessor
 from voice.services.kokoro_tts import KokoroTTSService
 from voice.services.postop_llm import PostOpLLMService
@@ -41,9 +42,13 @@ def create_orchestrator_and_session(
     registration: PatientRegistration,
     *,
     settings: Settings | None = None,
+    retriever: ContextualRetriever | None = None,
 ) -> tuple[ConversationOrchestrator, UUID]:
     settings = settings or get_settings()
-    orchestrator = ConversationOrchestrator(settings=settings)
+    orchestrator = ConversationOrchestrator(
+        settings=settings,
+        retriever=retriever,
+    )
     session = orchestrator.start_call(
         procedure_scenario=registration.procedure_scenario,
         procedure_id=registration.procedure_id,

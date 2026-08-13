@@ -205,6 +205,8 @@ class CallSessionState(BaseModel):
     call_closed: bool = False
     call_close_logged: bool = False
     last_closed_reason: str | None = None
+    logged_summary_severity: SeverityLevel | None = None
+    logged_summary_alert: bool | None = None
     turn_count: int = 0
     turns: list[TurnRecord] = Field(default_factory=list)
     sources_used: set[str] = Field(default_factory=set)

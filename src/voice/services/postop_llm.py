@@ -111,7 +111,7 @@ class PostOpLLMService(LLMService):
             self._opening_ready.set()
             return
         if self._defer_opening_until_connected:
-            await asyncio.sleep(0.75)
+            await asyncio.sleep(self._app_settings.voice_connected_delay_seconds)
         self._opening_in_progress = True
         try:
             try:
@@ -128,18 +128,20 @@ class PostOpLLMService(LLMService):
                 )
                 self._opening_failed.set()
                 await self._speak_opening_fallback()
-            await self._wait_opening_playback_grace()
+            self._opening_in_progress = False
+            self._opening_ready.set()
+            if session := self._orchestrator.get_session(self._call_id):
+                opening = (session.opening_message or "").strip()
+                if opening:
+                    asyncio.create_task(self._wait_opening_playback_grace(opening))
         finally:
             self._opening_in_progress = False
             self._opening_ready.set()
 
-    async def _wait_opening_playback_grace(self) -> None:
-        """Wait until the opening greeting has likely finished playing in the browser."""
-        session = self._orchestrator.get_session(self._call_id)
-        opening = (session.opening_message or "").strip()
-        if not opening:
-            return
-        grace_seconds = min(max(2.0, len(opening) / 14.0), 12.0)
+    async def _wait_opening_playback_grace(self, opening: str) -> None:
+        """Background cushion so early patient speech does not overlap the greeting."""
+        max_seconds = self._app_settings.voice_opening_grace_max_seconds
+        grace_seconds = min(max(0.5, len(opening) / 18.0), max_seconds)
         await asyncio.sleep(grace_seconds)
 
     async def ensure_opening(self) -> None:
@@ -195,7 +197,12 @@ class PostOpLLMService(LLMService):
         """Ejecuta RAG bootstrap + mensaje de apertura (equivalente a ``begin_triage``)."""
         if self._opening_sent:
             return
-        await self._stream_response(self._orchestrator.stream_opening_response(self._call_id))
+        await self._stream_response(
+            self._orchestrator.stream_opening_response(
+                self._call_id,
+                skip_rag=self._app_settings.voice_skip_opening_rag,
+            )
+        )
         self._opening_sent = True
         session = self._orchestrator.get_session(self._call_id)
         if session.opening_message:

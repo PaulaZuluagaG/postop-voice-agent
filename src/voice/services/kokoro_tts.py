@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncGenerator
-from threading import Thread
+from threading import Lock, Thread
 
 import numpy as np
 from kokoro import KPipeline
@@ -15,7 +15,44 @@ from pipecat.services.settings import TTSSettings
 from pipecat.services.tts_service import TextAggregationMode, TTSService
 from pipecat.utils.tracing.service_decorators import traced_tts
 
+from core.config import Settings, get_settings
+
 SENTENCE_SPLIT_PATTERN = r"(?<=[.!?…])\s+"
+
+_pipeline_cache: dict[tuple[str, str], KPipeline] = {}
+_pipeline_lock = Lock()
+
+
+def get_shared_kokoro_pipeline(*, lang_code: str, voice: str) -> KPipeline:
+    key = (lang_code, voice)
+    cached = _pipeline_cache.get(key)
+    if cached is not None:
+        return cached
+    with _pipeline_lock:
+        cached = _pipeline_cache.get(key)
+        if cached is None:
+            pipeline = KPipeline(lang_code=lang_code, device="cpu", repo_id="hexgrad/Kokoro-82M")
+            pipeline.load_single_voice(voice)
+            _pipeline_cache[key] = pipeline
+            logger.info("Shared Kokoro pipeline loaded | lang={} voice={}", lang_code, voice)
+        return _pipeline_cache[key]
+
+
+def warmup_kokoro_pipeline(settings: Settings | None = None) -> float:
+    app_settings = settings or get_settings()
+    started = time.perf_counter()
+    pipeline = get_shared_kokoro_pipeline(
+        lang_code=app_settings.kokoro_lang_code,
+        voice=app_settings.kokoro_voice,
+    )
+    for _graphemes, _phonemes, _audio in pipeline(
+        "Hola.",
+        voice=app_settings.kokoro_voice,
+        speed=app_settings.kokoro_speed,
+        split_pattern=SENTENCE_SPLIT_PATTERN,
+    ):
+        break
+    return (time.perf_counter() - started) * 1000
 
 
 class KokoroTTSService(TTSService):
@@ -45,8 +82,7 @@ class KokoroTTSService(TTSService):
         self._lang_code = lang_code
         self._voice = voice
         self._speed = speed
-        self._pipeline = KPipeline(lang_code=lang_code, device="cpu", repo_id="hexgrad/Kokoro-82M")
-        self._pipeline.load_single_voice(voice)
+        self._pipeline = get_shared_kokoro_pipeline(lang_code=lang_code, voice=voice)
         logger.info(
             "Kokoro TTS listo | lang={} voice={} sample_rate={}Hz",
             lang_code,

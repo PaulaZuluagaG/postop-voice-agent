@@ -1,28 +1,16 @@
-from agent.decision.response_shaping import patient_echo_overlap, soften_patient_echo
+from agent.decision.response_shaping import append_unique_question, is_redundant_speech_suffix
 
 
-def test_soften_patient_echo_replaces_high_overlap() -> None:
-    result = soften_patient_echo(
-        "he tenido fiebre",
-        "Entiendo, ha tenido fiebre desde anoche.",
-        turn_index=0,
+def test_is_redundant_speech_suffix_detects_exact_duplicate() -> None:
+    spoken = (
+        "De acuerdo, vamos a revisar su temperatura. "
+        "¿Cuál ha sido su temperatura corporal máxima registrada hoy?"
     )
-    assert result == "De acuerdo."
-    assert "fiebre" not in result.lower()
+    suffix = "¿Cuál ha sido su temperatura corporal máxima registrada hoy?"
+    assert is_redundant_speech_suffix(spoken, suffix) is True
 
 
-def test_soften_patient_echo_keeps_unrelated_acknowledgment() -> None:
-    result = soften_patient_echo(
-        "he tenido fiebre",
-        "Gracias por la información.",
-        turn_index=1,
-    )
-    assert result == "Gracias por la información."
-
-
-def test_patient_echo_overlap_detects_paraphrase() -> None:
-    overlap = patient_echo_overlap(
-        "he tenido fiebre",
-        "Entiendo, ha tenido fiebre desde anoche.",
-    )
-    assert overlap >= 0.45
+def test_append_unique_question_keeps_single_question() -> None:
+    question = "¿Cuál ha sido su temperatura corporal máxima registrada hoy?"
+    base = f"De acuerdo, vamos a revisar su temperatura. {question}"
+    assert append_unique_question(base, question) == base

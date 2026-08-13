@@ -331,3 +331,27 @@ def test_compose_response_uses_disclaimer_without_double_question() -> None:
     assert "No tengo información" in response
     assert response.count("?") == 1
     assert response.endswith("¿Qué síntoma le preocupa más?")
+
+
+def test_compose_response_does_not_duplicate_question_in_texto_paciente() -> None:
+    question = "¿Cuál ha sido su temperatura corporal máxima registrada hoy?"
+    llm_output = LLMTurnOutput(
+        categoria=ResponseCategory.RESPUESTA_VALIDA,
+        foco_sintoma="fiebre",
+        evidencia_suficiente=True,
+        sintomas={"fiebre": False},
+        texto_paciente=f"De acuerdo, vamos a revisar su temperatura. {question}",
+        pregunta=question,
+        fuentes=["src_test"],
+    )
+
+    session = make_session()
+    response = ConversationOrchestrator()._compose_response(
+        session,
+        "no tengo fiebre",
+        llm_output,
+        registered_scenario=ProcedureScenario.TOTAL_JOINT_REPLACEMENT,
+    )
+
+    assert response.count("?") == 1
+    assert response.endswith(question)

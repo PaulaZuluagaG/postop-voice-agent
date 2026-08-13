@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Any
 
@@ -34,6 +35,7 @@ from knowledge.protocol.loader import list_risk_factors_for_procedure
 from knowledge.readiness import VoiceReadiness, assess_voice_readiness
 from voice.browser import build_webrtc_pipeline
 from voice.pipeline import create_orchestrator_and_session
+from voice.shared_runtime import get_shared_retriever, warmup_voice_runtime
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -54,6 +56,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     active_sessions: dict[str, dict[str, Any]] = {}
     session_call_ids: dict[str, str] = {}
     webrtc_handler = SmallWebRTCRequestHandler()
+
+    @app.on_event("startup")
+    async def warm_voice_runtime() -> None:
+        if not settings.voice_warmup_on_start:
+            return
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, warmup_voice_runtime, settings)
 
     def _readiness_payload() -> dict[str, object]:
         readiness = assess_voice_readiness(settings)
@@ -131,7 +140,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session_id: str | None = None,
     ) -> None:
         registration = registration_from_frontend(patient_payload)
-        orchestrator, call_id = create_orchestrator_and_session(registration, settings=settings)
+        orchestrator, call_id = create_orchestrator_and_session(
+            registration,
+            settings=settings,
+            retriever=get_shared_retriever(settings),
+        )
         if session_id:
             session_call_ids[session_id] = str(call_id)
         voice_session = build_webrtc_pipeline(

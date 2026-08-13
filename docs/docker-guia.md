@@ -101,23 +101,31 @@ Rebuilds posteriores suelen bajar a **3–5 min** gracias a caché de Docker Bui
 
 ## 1. Configurar entorno (manual)
 
+Flujo habitual:
+
 ```bash
 cp .env.example .env
+# Edita .env: API keys y cualquier ajuste local
 ```
 
-Edita `.env` y define al menos:
+Los **defaults** están en `src/core/config.py`. El archivo `.env.example` se **genera** desde ahí (`uv run postop-config-example`) para que ambos no se desincronicen — por ejemplo, modelos Gemini retirados.
+
+Ver configuración efectiva tras editar `.env`:
+
+```bash
+uv run postop-config-example --show
+```
+
+Mínimo imprescindible en `.env` tras copiar la plantilla:
 
 ```env
 GROQ_API_KEY=...
 GEMINI_API_KEY=...
 DEEPGRAM_API_KEY=...
 ADMIN_TOKEN=un_token_seguro
-
-QDRANT_HOST=qdrant-db
-TEXTOS_DIR=data/textos
-NEXT_PUBLIC_VOICE_API_URL=http://localhost:7860
-VOICE_WEB_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 ```
+
+En Docker, `docker-compose.yml` sobreescribe `QDRANT_HOST`, rutas de datos e ingest tuning dentro de los contenedores.
 
 ## 2. Construir e iniciar (manual)
 
